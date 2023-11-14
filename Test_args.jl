@@ -22,10 +22,11 @@ end
 
 function main()
     parsed_args = parse_commandline()
-    println("Parsed args:")
-    for (arg,val) in parsed_args
-        println("  $arg  =>  $val")
-    end
+    
+#     println("Parsed args:")
+#     for (arg,val) in parsed_args
+#         println("  $arg  =>  $val")
+#     end
     
     cfrad = NCDataset(parsed_args["CFRad_path"])
     valid_vars = keys(cfrad)
@@ -33,12 +34,6 @@ function main()
     tasks = get_task_params(parsed_args["argfile"], valid_vars)
     
 end
-
-
-unc_regex = r"(\w{1,})\((\w{1,})\)"
-###Parses given parameter file and ensures that specified variables are found within the 
-###passed CFradial file
-###Could potentially internally return this as queues for each function 
 
 func_regex = r"(\w{1,})\((\w{1,})\)"
 ###Parses given parameter file and ensures that specified variables are found within the 
