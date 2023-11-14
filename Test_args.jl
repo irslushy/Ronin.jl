@@ -1,39 +1,62 @@
 using ArgParse 
 using NCDatasets
+###Define queues for function queues
+AVG_QUEUE = String[]
+ISO_QUEUE = String[] 
+STD_QUEUE = String[] 
+
 function parse_commandline()
     
     s = ArgParseSettings()
 
     @add_arg_table s begin
-        "--argfile","-f"
-            help = ("File containing comma-delimited list of variables you wish the script to calculate and output\n
-                    Currently supported funcs include AVG(var_name), STD(var_name), and ISO(var_name)\n
-                    Example file content: DBZ, VEL, AVG(DBZ), AVG(VEL), ISO(DBZ), STD(DBZ)")
-        "--outfile", "-o"
-            help = "Location to output mined data to"
-            default = "./mined_data.h5"
+        
         "CFRad_path"
             help = "Path to input CFRadial File"
             required = true
+   
+        "--argfile","-f"
+            help = ("File containing comma-delimited list of variables you wish the script to calculate and output\n
+                    Currently supported funcs include AVG(var_name), STD(var_name), and ISO(var_name)\n
+                    Example file content: DBZ, VEL, AVG(DBZ), AVG(VEL), ISO(DBZ), STD(DBZ)\n")
+        "--outfile", "-o"
+            help = "Location to output mined data to"
+            default = "./mined_data.h5"
+        "--mode", "-m" 
+            help = ("FILE or DIRECTORY\nDescribes whether the CFRAD_path describes a file or a director\n")
+            default = "FILE"
+        "--QC", "-Q"
+            help = ("TRUE or FALSE\nDescribes whether the given file or files contain manually QCed fields\n")
+            default = "FALSE"
     end
 
     return parse_args(s)
 end
 
 function main()
-    parsed_args = parse_commandline()
     
-#     println("Parsed args:")
-#     for (arg,val) in parsed_args
-#         println("  $arg  =>  $val")
-#     end
+    parsed_args = parse_commandline()
+    println("Parsed args:")
+    for (arg,val) in parsed_args
+        println("  $arg  =>  $val")
+    end
+    print(parsed_args)
+    ##Load given netCDF file 
     
     cfrad = NCDataset(parsed_args["CFRad_path"])
     valid_vars = keys(cfrad)
     
     tasks = get_task_params(parsed_args["argfile"], valid_vars)
     
+    fid = h5open(parsed_args["outfile"], "w")
+    
+    create_dataset(fid,"./X")
+    attributes(fid)["Parameters"] = tasks
+    
+    close(fid)
 end
+
+main()
 
 func_regex = r"(\w{1,})\((\w{1,})\)"
 ###Parses given parameter file and ensures that specified variables are found within the 
