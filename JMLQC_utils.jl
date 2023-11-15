@@ -48,8 +48,7 @@ module JMLQC_utils
     function _weighted_func(var::AbstractMatrix{}, weights, func)
 
         valid_weights = .!map(ismissing, weights)
-
-
+    
         updated_weights = weights[valid_weights]
         updated_var = var[valid_weights]
 
@@ -156,8 +155,6 @@ module JMLQC_utils
         mapwindow((x) -> _weighted_func(x, weights, std), var, window, border=Fill(missing))
     end 
 
-
-
     function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, window = avg_window)
 
         if size(weights) != window
@@ -175,9 +172,6 @@ module JMLQC_utils
 
         mapwindow((x) -> _weighted_func(x, weights, avg), var, window, border=Fill(missing))
     end
-
-
-
 
     ###Deprecated functionality, now rolled into _weighted_missing_func
 
