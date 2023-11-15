@@ -8,6 +8,19 @@ module JMLQC_utils
     using BenchmarkTools
 
     export get_NCP, calc_isolation_param, airborne_ht, prob_groundgate, calc_avg, calc_std
+    
+    iso_weights = allowmissing(ones(7,7))
+    iso_weights[4,4] = missing
+    iso_window = (7,7)
+
+    avg_weights = allowmissing(ones(5,5))
+    avg_weights[3,3] = missing
+    avg_window = (5,5)
+
+    std_weights = allowmissing(ones(5,5))
+    std_weights[3,3] = missing
+    std_window = (5,5)
+    
     EarthRadiusKm = 6375.636
     EarthRadiusSquare = 6375.636 * 6375.636
     DegToRad = 0.01745329251994372
@@ -46,7 +59,7 @@ module JMLQC_utils
         return func(updated_var[valid_idxs] .* updated_weights[valid_idxs])
     end
 
-    function calc_isolation_param(var::AbstractMatrix{Union{Missing, Float64}}, weights, window)
+    function calc_isolation_param(var::AbstractMatrix{Union{Missing, Float64}}; weights = iso_weights, window = iso_window)
 
         if size(weights) != window
             error("Weight matrix does not equal window size")
@@ -59,7 +72,7 @@ module JMLQC_utils
     ##Calculate the isolation of a given variable 
     ###These actually don't necessarily need to be functions of their own, could just move them to
     ###Calls to _weighted_func 
-    function calc_isolation_param(var::AbstractMatrix{Union{Missing, Float32}}, weights, window)
+    function calc_isolation_param(var::AbstractMatrix{Union{Missing, Float32}}; weights = iso_weights, window = iso_window)
 
         if size(weights) != window
             error("Weight matrix does not equal window size")
@@ -126,8 +139,7 @@ module JMLQC_utils
 
 
     ##Calculate the windowed standard deviation of a given variablevariable 
-    function calc_std(var::AbstractMatrix{Union{Missing, Float64}}, weights, window)
-
+    function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_weights, window = std_window)
         if size(weights) != window
             error("Weight matrix does not equal window size")
         end
@@ -135,7 +147,27 @@ module JMLQC_utils
         mapwindow((x) -> _weighted_func(x, weights, std), var, window, border=Fill(missing))
     end 
 
-    function calc_avg(var::Matrix{Union{Missing, Float32}}, weights, window)
+    ##Calculate the windowed standard deviation of a given variablevariable 
+    function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_window)
+        if size(weights) != window
+            error("Weight matrix does not equal window size")
+        end
+
+        mapwindow((x) -> _weighted_func(x, weights, std), var, window, border=Fill(missing))
+    end 
+
+
+
+    function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, window = avg_window)
+
+        if size(weights) != window
+            error("Weight matrix does not equal window size")
+        end
+
+        mapwindow((x) -> _weighted_func(x, weights, avg), var, window, border=Fill(missing))
+    end
+
+    function calc_avg(var::Matrix{}}; weights = avg_weights, window = avg_window)
 
         if size(weights) != window
             error("Weight matrix does not equal window size")
