@@ -1,5 +1,11 @@
-using ArgParse 
+include("./JMLQC_utils.jl")
+using .JMLQC_utils
 using NCDatasets
+using ArgParse 
+using HDF5 
+
+func_regex = r"(\w{1,})\((\w{1,})\)"
+
 ###Define queues for function queues
 AVG_QUEUE = String[]
 ISO_QUEUE = String[] 
@@ -14,7 +20,6 @@ function parse_commandline()
         "CFRad_path"
             help = "Path to input CFRadial File"
             required = true
-   
         "--argfile","-f"
             help = ("File containing comma-delimited list of variables you wish the script to calculate and output\n
                     Currently supported funcs include AVG(var_name), STD(var_name), and ISO(var_name)\n
@@ -23,45 +28,17 @@ function parse_commandline()
             help = "Location to output mined data to"
             default = "./mined_data.h5"
         "--mode", "-m" 
-            help = ("FILE or DIRECTORY\nDescribes whether the CFRAD_path describes a file or a director\n")
+            help = ("FILE or DIRECTORY\nDescribes whether the CFRAD_path describes a file or a director\n
+                    DEFAULT: FILE")
             default = "FILE"
         "--QC", "-Q"
-            help = ("TRUE or FALSE\nDescribes whether the given file or files contain manually QCed fields\n")
-            default = "FALSE"
+            help = ("TRUE or FALSE\nDescribes whether the given file or files contain manually QCed fields\n
+                    DEFAULT: FALSE")
     end
 
     return parse_args(s)
 end
 
-function main()
-    
-    parsed_args = parse_commandline()
-    println("Parsed args:")
-    for (arg,val) in parsed_args
-        println("  $arg  =>  $val")
-    end
-    print(parsed_args)
-    ##Load given netCDF file 
-    
-    cfrad = NCDataset(parsed_args["CFRad_path"])
-    valid_vars = keys(cfrad)
-    
-    tasks = get_task_params(parsed_args["argfile"], valid_vars)
-    
-    fid = h5open(parsed_args["outfile"], "w")
-    
-    create_dataset(fid,"./X")
-    attributes(fid)["Parameters"] = tasks
-    
-    close(fid)
-end
-
-main()
-
-func_regex = r"(\w{1,})\((\w{1,})\)"
-###Parses given parameter file and ensures that specified variables are found within the 
-###passed CFradial file
-###Could potentially internally return this as queues for each function 
 function get_task_params(params_file, variablelist; delimiter=",")
     
     tasks = readlines(params_file)
@@ -89,4 +66,48 @@ function get_task_params(params_file, variablelist; delimiter=",")
     
     return(task_param_list)
 end 
+
+function main()
+    
+    parsed_args = parse_commandline()
+    println("Parsed args:")
+    for (arg,val) in parsed_args
+        println("  $arg  =>  $val")
+    end
+    print(parsed_args)
+    ##Load given netCDF file 
+    
+    cfrad = NCDataset(parsed_args["CFRad_path"])
+    cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
+    
+    valid_vars = keys(cfrad)
+    
+    tasks = get_task_params(parsed_args["argfile"], valid_vars)
+    
+    #fid = h5open(parsed_args["outfile"], "w")
+    
+    #create_dataset(fid,"./X")
+    #attributes(fid)["Parameters"] = tasks
+    
+    ###Features array 
+    X = Array{Float64}(undef, cfrad_dims[1] * cfrad_dims[2], length(tasks))
+    
+    for task in tasks
+        println("GETTING: $task...")
+        ###λ identifier indicates that the requested task is a function 
+        if (task[1] == 'λ')
+            print(task[3:end])
+        else 
+            push!(X, cfrad[task])
+        end 
+    end 
+        
+    #close(fid)
+end
+
 main()
+
+
+###Parses given parameter file and ensures that specified variables are found within the 
+###passed CFradial file
+###Could potentially internally return this as queues for each function 
