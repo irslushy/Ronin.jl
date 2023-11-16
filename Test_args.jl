@@ -4,6 +4,9 @@ using NCDatasets
 using ArgParse 
 using HDF5 
 
+###TODO: Get rid of MISSING values because otherwise the model breaks - and we don't want to train it on gates that
+###are already obviously missing/nonweather data
+
 ###Prefix of functions for calculating spatially averaged variables in the utils.jl file 
 func_prefix = "calc_"
 func_regex = r"(\w{1,})\((\w{1,})\)"
@@ -14,6 +17,8 @@ ISO_QUEUE = String[]
 STD_QUEUE = String[] 
 
 valid_funcs = ["AVG", "ISO", "STD", "AHT", "PGG"]
+
+FILL_VAL = -32000.
 
 function parse_commandline()
     
@@ -125,11 +130,9 @@ function main()
     
     tasks = get_task_params(parsed_args["argfile"], valid_vars)
     
-#     fid = h5open(parsed_args["outfile"], "w")
-    
-#     create_dataset(fid,"./X")
-#     attributes(fid)["Parameters"] = tasks
-    
+    fid = h5open(parsed_args["outfile"], "w")
+    attributes(fid)["Parameters"] = tasks
+    attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
     ###Features array 
     X = Matrix{Union{Float64,Missing}}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
     
@@ -145,19 +148,23 @@ function main()
             
             curr_func = Symbol(func_prefix * curr_func)
             startTime = time() 
-            X[:, i] = (@eval $curr_func($cfrad[$var][:,:]))[:]
+
+            raw = @eval $curr_func($cfrad[$var][:,:])[:]
+            filled = Vector{Float64}
+            filled = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            X[:, i] = filled[:]
             calc_length = time() - startTime
             println("Completed in $calc_length s"...)
             println()
             
         else 
             println("GETTING: $task...")
-            X[:,i] = cfrad[task][:]
+            X[:,i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
         end 
     end 
-#     close(fid)
+    write_dataset(fid, "X", X)
+    close(fid)
 end
-
 
 main()
 
