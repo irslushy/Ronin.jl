@@ -90,15 +90,15 @@ function main()
     #attributes(fid)["Parameters"] = tasks
     
     ###Features array 
-    X = Array{Float64}(undef, cfrad_dims[1] * cfrad_dims[2], length(tasks))
+    X = Array{Union{Float64, Missing}}(undef, cfrad_dims[1] * cfrad_dims[2], length(tasks))
     
-    for task in tasks
+    for (i, task) in enumerate(tasks)
         println("GETTING: $task...")
         ###λ identifier indicates that the requested task is a function 
         if (task[1] == 'λ')
             print(task[3:end])
         else 
-            push!(X, cfrad[task])
+            X[:, i] = cfrad[task][:]
         end 
     end 
         
