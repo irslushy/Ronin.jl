@@ -58,7 +58,7 @@ module JMLQC_utils
         return func(updated_var[valid_idxs] .* updated_weights[valid_idxs])
     end
 
-    function calc_isolation_param(var::AbstractMatrix{Union{Missing, Float64}}; weights = iso_weights, window = iso_window)
+    function calc_iso(var::AbstractMatrix{Union{Missing, Float64}}; weights = iso_weights, window = iso_window)
 
         if size(weights) != window
             error("Weight matrix does not equal window size")
@@ -71,7 +71,7 @@ module JMLQC_utils
     ##Calculate the isolation of a given variable 
     ###These actually don't necessarily need to be functions of their own, could just move them to
     ###Calls to _weighted_func 
-    function calc_isolation_param(var::AbstractMatrix{Union{Missing, Float32}}; weights = iso_weights, window = iso_window)
+    function calc_iso(var::AbstractMatrix{Union{Missing, Float32}}; weights = iso_weights, window = iso_window)
 
         if size(weights) != window
             error("Weight matrix does not equal window size")
@@ -84,7 +84,7 @@ module JMLQC_utils
     ###Emulates np.nanmean function while implementing weighted averaging
 
 
-    function airborne_ht(elevation_angle, antenna_range, aircraft_height)
+    function calc_aht(elevation_angle, antenna_range, aircraft_height)
     #     global GLOBL_COUNTER
     #     print(GLOBL_COUNTER)
     #     GLOBL_COUNTER = GLOBL_COUNTER + 1
@@ -98,7 +98,7 @@ module JMLQC_utils
 
     ###How can we optimize this.... if one gate has a probability of ground equal to 1, the rest of 
     ###The gates further in that range must also have probability equal to 1, correct? 
-    function prob_groundgate(elevation_angle, antenna_range, aircraft_height, azimuth) #max_range) ? ?? ? ?? ? ?? 
+    function calc_pgg(elevation_angle, antenna_range, aircraft_height, azimuth) #max_range) ? ?? ? ?? ? ?? 
 
         ###If range of gate is less than altitude, cannot hit ground
         ###If elevation angle is positive, cannot hit ground 
@@ -161,16 +161,16 @@ module JMLQC_utils
             error("Weight matrix does not equal window size")
         end
 
-        mapwindow((x) -> _weighted_func(x, weights, avg), var, window, border=Fill(missing))
+        mapwindow((x) -> _weighted_func(x, weights, mean), var, window, border=Fill(missing))
     end
 
-    function calc_avg(var::Matrix{}}; weights = avg_weights, window = avg_window)
+    function calc_avg(var::Matrix{}; weights = avg_weights, window = avg_window)
 
         if size(weights) != window
             error("Weight matrix does not equal window size")
         end
 
-        mapwindow((x) -> _weighted_func(x, weights, avg), var, window, border=Fill(missing))
+        mapwindow((x) -> _weighted_func(x, weights, mean), var, window, border=Fill(missing))
     end
 
     ###Deprecated functionality, now rolled into _weighted_missing_func

@@ -50,6 +50,7 @@ function get_task_params(params_file, variablelist; delimiter=",")
         else
             delimited = split(line, delimiter)
             for token in delimited
+                token = strip(token, ' ')
                 expr_ret = match(func_regex,token)
                 if (typeof(expr_ret) != Nothing)
                     print("CACLULATE $(expr_ret[1]) of $(expr_ret[2])\n")
@@ -67,6 +68,36 @@ function get_task_params(params_file, variablelist; delimiter=",")
     return(task_param_list)
 end 
 
+###Define queues for function queues
+
+function parse_commandline()
+    
+    s = ArgParseSettings()
+
+    @add_arg_table s begin
+        
+        "CFRad_path"
+            help = "Path to input CFRadial File"
+            required = true
+        "--argfile","-f"
+            help = ("File containing comma-delimited list of variables you wish the script to calculate and output\n
+                    Currently supported funcs include AVG(var_name), STD(var_name), and ISO(var_name)\n
+                    Example file content: DBZ, VEL, AVG(DBZ), AVG(VEL), ISO(DBZ), STD(DBZ)\n")
+        "--outfile", "-o"
+            help = "Location to output mined data to"
+            default = "./mined_data.h5"
+        "--mode", "-m" 
+            help = ("FILE or DIRECTORY\nDescribes whether the CFRAD_path describes a file or a director\n
+                    DEFAULT: FILE")
+            default = "FILE"
+        "--QC", "-Q"
+            help = ("TRUE or FALSE\nDescribes whether the given file or files contain manually QCed fields\n
+                    DEFAULT: FALSE")
+    end
+
+    return parse_args(s)
+end
+
 function main()
     
     parsed_args = parse_commandline()
@@ -74,7 +105,6 @@ function main()
     for (arg,val) in parsed_args
         println("  $arg  =>  $val")
     end
-    print(parsed_args)
     ##Load given netCDF file 
     
     cfrad = NCDataset(parsed_args["CFRad_path"])
@@ -84,26 +114,35 @@ function main()
     
     tasks = get_task_params(parsed_args["argfile"], valid_vars)
     
-    #fid = h5open(parsed_args["outfile"], "w")
+#     fid = h5open(parsed_args["outfile"], "w")
     
-    #create_dataset(fid,"./X")
-    #attributes(fid)["Parameters"] = tasks
+#     create_dataset(fid,"./X")
+#     attributes(fid)["Parameters"] = tasks
     
     ###Features array 
-    X = Array{Union{Float64, Missing}}(undef, cfrad_dims[1] * cfrad_dims[2], length(tasks))
+    X = Matrix{Union{Float64,Missing}}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
     
     for (i, task) in enumerate(tasks)
         println("GETTING: $task...")
+        
         ###λ identifier indicates that the requested task is a function 
         if (task[1] == 'λ')
-            print(task[3:end])
+            
+            curr_func = lowercase(task[3:5])
+            var = task[7:9]
+            
+            println("CALCULATING $curr_func OF $var")
+            
+            curr_func = Symbol(func_prefix * curr_func)
+            X[:, i] = (@eval $curr_func(currset[$var][:,:]))[:]
+            
         else 
-            X[:, i] = cfrad[task][:]
+            X[:,i] = cfrad[task][:]
         end 
     end 
-        
-    #close(fid)
+#     close(fid)
 end
+
 
 main()
 
