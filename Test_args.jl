@@ -4,12 +4,16 @@ using NCDatasets
 using ArgParse 
 using HDF5 
 
+###Prefix of functions for calculating spatially averaged variables in the utils.jl file 
+func_prefix = "calc_"
 func_regex = r"(\w{1,})\((\w{1,})\)"
 
 ###Define queues for function queues
 AVG_QUEUE = String[]
 ISO_QUEUE = String[] 
 STD_QUEUE = String[] 
+
+valid_funcs = ["AVG", "ISO", "STD", "AHT", "PGG"]
 
 function parse_commandline()
     
@@ -53,12 +57,18 @@ function get_task_params(params_file, variablelist; delimiter=",")
                 token = strip(token, ' ')
                 expr_ret = match(func_regex,token)
                 if (typeof(expr_ret) != Nothing)
-                    print("CACLULATE $(expr_ret[1]) of $(expr_ret[2])\n")
+                    if (expr_ret[1] ∉ valid_funcs || expr_ret[2] ∉ variablelist)
+                        println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
+                        "Potentially invalid function or missing variable\n")
+                    else
+                        ###Add λ to the front of the token to indicate it is a function call
+                        push!(task_param_list, "λ" * token)
+                    end 
                 else
                     if token in variablelist
                         push!(task_param_list, token)
                     else
-                        print("\"$token\" NOT FOUND IN CFRAD FILE.... CONTINUING...\n")
+                        println("\"$token\" NOT FOUND IN CFRAD FILE.... CONTINUING...\n")
                     end
                 end
             end
@@ -101,15 +111,16 @@ end
 function main()
     
     parsed_args = parse_commandline()
-    println("Parsed args:")
-    for (arg,val) in parsed_args
-        println("  $arg  =>  $val")
-    end
+#     println("Parsed args:")
+#     for (arg,val) in parsed_args
+#         println("  $arg  =>  $val")
+#     end
     ##Load given netCDF file 
     
     cfrad = NCDataset(parsed_args["CFRad_path"])
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
-    
+    println("\nDIMENSIONS: $cfrad_dims\n")
+
     valid_vars = keys(cfrad)
     
     tasks = get_task_params(parsed_args["argfile"], valid_vars)
@@ -123,20 +134,24 @@ function main()
     X = Matrix{Union{Float64,Missing}}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
     
     for (i, task) in enumerate(tasks)
-        println("GETTING: $task...")
-        
+  
         ###λ identifier indicates that the requested task is a function 
         if (task[1] == 'λ')
             
             curr_func = lowercase(task[3:5])
             var = task[7:9]
             
-            println("CALCULATING $curr_func OF $var")
+            println("CALCULATING $curr_func OF $var... ")
             
             curr_func = Symbol(func_prefix * curr_func)
-            X[:, i] = (@eval $curr_func(currset[$var][:,:]))[:]
+            startTime = time() 
+            X[:, i] = (@eval $curr_func($cfrad[$var][:,:]))[:]
+            calc_length = time() - startTime
+            println("Completed in $calc_length s"...)
+            println()
             
         else 
+            println("GETTING: $task...")
             X[:,i] = cfrad[task][:]
         end 
     end 

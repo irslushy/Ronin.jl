@@ -7,7 +7,7 @@ module JMLQC_utils
     using Missings
     using BenchmarkTools
 
-    export get_NCP, calc_isolation_param, airborne_ht, prob_groundgate, calc_avg, calc_std
+    export get_NCP, calc_iso, airborne_ht, prob_groundgate, calc_avg, calc_std
     
     iso_weights = allowmissing(ones(7,7))
     iso_weights[4,4] = missing
