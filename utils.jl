@@ -33,11 +33,12 @@ module JMLQC_utils
     ##TODO: Add these as default arguments for their respective functions 
     USE_GATE_IN_CALC = false 
 
+    ##Returns flattened version of NCP 
     function get_NCP(data::NCDataset)
         ###Some ternary operator + short circuit trickery here 
-        (("NCP" in keys(data)) ? (return(data["NCP"][:,start_scan_idx:1:end_scan_idx]))
+        (("NCP" in keys(data)) ? (return(data["NCP"][:]))
                             : ("SQI" in keys(data) ||  error("Could Not Find NCP in dataset")))
-        return(data["SQI"][:, start_scan_idx:1:end_scan_idx])
+        return(data["SQI"][:])
     end
 
 
@@ -174,7 +175,20 @@ module JMLQC_utils
     end
 
 
+    function calc_pgg(cfrad)
 
+        num_times = length(cfrad["time"])
+        num_ranges = length(cfrad["range"])
+    
+        ranges = repeat(cfrad["range"][:], 1, num_times)
+        ##Height, elevation, and azimuth will be the same for every ray
+        heights = repeat(transpose(cfrad["altitude"][:]), num_ranges, 1)
+        elevs = repeat(transpose(cfrad["elevation"][:]), num_ranges, 1)
+        azimuths = repeat(transpose(cfrad["azimuth"][:]), num_ranges, 1)
+        
+        ##This would return 
+        return(map((w,x,y,z) -> prob_groundgate(w,x,y,z), elevs, ranges, heights, azimuths))
+    end 
 
     ###Deprecated functionality, now rolled into _weighted_missing_func
 

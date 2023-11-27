@@ -54,7 +54,7 @@ function get_task_params(params_file, variablelist; delimiter=",")
     task_param_list = String[]
     
     for line in tasks
-        if line[1] == "#"
+        if line[1] == '#'
             continue
         else
             delimited = split(line, delimiter)
@@ -114,20 +114,7 @@ function parse_commandline()
 end
 
 
-function calc_pgg(cfrad)
 
-    num_times = length(cfrad["time"])
-    num_ranges = length(cfrad["range"])
-
-    ranges = repeat(cfrad["range"][:], 1, num_times)
-    ##Height, elevation, and azimuth will be the same for every ray
-    heights = repeat(transpose(cfrad["altitude"][:]), num_ranges, 1)
-    elevs = repeat(transpose(cfrad["elevation"][:]), num_ranges, 1)
-    azimuths = repeat(transpose(cfrad["azimuth"][:]), num_ranges, 1)
-
-    ##This would return 
-    return(map((w,x,y,z) -> JMLQC_utils.prob_groundgate(w,x,y,z), elevs, ranges, heights, azimuths))
-end 
 
 function main()
     
@@ -178,7 +165,12 @@ function main()
 
             if (task == "PGG") 
                 startTime = time() 
-                PGG_set = calc_pgg(cfrad)
+                X[:, i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
+                calc_length = time() - startTime
+                println("Completed in $calc_length s"...)
+            elseif (task == "NCP")
+                startTime = time()
+                X[:, i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.get_NCP(cfrad)[:]]
                 calc_length = time() - startTime
                 println("Completed in $calc_length s"...)
             else
