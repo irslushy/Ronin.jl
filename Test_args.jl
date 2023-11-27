@@ -1,4 +1,4 @@
-include("./JMLQC_utils.jl")
+include("utils.jl")
 using .JMLQC_utils
 using NCDatasets
 using ArgParse 
@@ -70,7 +70,7 @@ function get_task_params(params_file, variablelist; delimiter=",")
                         push!(task_param_list, "λ" * token)
                     end 
                 else
-                    if token in variablelist
+                    if token in variablelist || token ∈ valid_funcs
                         push!(task_param_list, token)
                     else
                         println("\"$token\" NOT FOUND IN CFRAD FILE.... CONTINUING...\n")
@@ -112,6 +112,22 @@ function parse_commandline()
 
     return parse_args(s)
 end
+
+
+function calc_pgg(cfrad)
+
+    num_times = length(cfrad["time"])
+    num_ranges = length(cfrad["range"])
+
+    ranges = repeat(cfrad["range"][:], 1, num_times)
+    ##Height, elevation, and azimuth will be the same for every ray
+    heights = repeat(transpose(cfrad["altitude"][:]), num_ranges, 1)
+    elevs = repeat(transpose(cfrad["elevation"][:]), num_ranges, 1)
+    azimuths = repeat(transpose(cfrad["azimuth"][:]), num_ranges, 1)
+
+    ##This would return 
+    return(map((w,x,y,z) -> JMLQC_utils.prob_groundgate(w,x,y,z), elevs, ranges, heights, azimuths))
+end 
 
 function main()
     
@@ -159,17 +175,25 @@ function main()
             
         else 
             println("GETTING: $task...")
-            startTime = time() 
-            X[:,i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
-            calc_length = time() - startTime
-            println("Completed in $calc_length s"...)
+
+            if (task == "PGG") 
+                startTime = time() 
+                PGG_set = calc_pgg(cfrad)
+                calc_length = time() - startTime
+                println("Completed in $calc_length s"...)
+            else
+                startTime = time() 
+                X[:,i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
+                calc_length = time() - startTime
+                println("Completed in $calc_length s"...)
+            end 
             println()
         end 
     end 
 
     ###Filter dataset to remove missing VTs 
     ###Not possible to do beforehand because spatial information 
-    ###Needs to be retained for some of the parameters
+    ###Needs to be retained for some of the parameters--
     X = X[X[:,1].!= FILL_VAL, :]
     final_shape = size(X)
     println("FINAL ARRAY SHAPE: $final_shape")
