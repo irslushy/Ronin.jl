@@ -71,7 +71,6 @@ function_missing_weights_avg(var::AbstractMatrix{Union{Missing, Float32}}, weigh
 
     valid_weights = .!map(ismissing, weights)
     
-    
     updated_weights = weights[valid_weights]
     updated_var = var[valid_weights]
     
@@ -82,7 +81,6 @@ end
 function_missing_weights_avg(var::AbstractMatrix{Union{Missing, Float64}}, weights::AbstractMatrix{Union{Missing, Float64}})
 
     valid_weights = .!map(ismissing, weights)
-    
     
     updated_weights = weights[valid_weights]
     updated_var = var[valid_weights]
@@ -95,7 +93,6 @@ function _missing_weights_avg(var, weights)
     
     valid_weights = .!map(ismissing, weights)
     
-    
     updated_weights = weights[valid_weights]
     updated_var = var[valid_weights]
     
@@ -104,10 +101,7 @@ function _missing_weights_avg(var, weights)
 end
 
 function airborne_ht(elevation_angle, antenna_range, aircraft_height)
-#     global GLOBL_COUNTER
-#     print(GLOBL_COUNTER)
-#     GLOBL_COUNTER = GLOBL_COUNTER + 1
-    ##Initial heights are in meters, convert to km 
+
     aRange_km, acHeight_km = (antenna_range, aircraft_height) ./ 1000
     term1 = aRange_km^2 + EarthRadiusKm^2
     term2 = 2 * aRange_km * EarthRadiusKm * sin(deg2rad(elevation_angle))
@@ -117,6 +111,14 @@ end
 
 ###How can we optimize this.... if one gate has a probability of ground equal to 1, the rest of 
 ###The gates further in that range must also have probability equal to 1, correct? 
+
+###To vectorize: 
+# ranges = repeat(ranges, 1, num_times)
+
+# ##Height, elevation, and azimuth will be the same for every ray
+# heights = repeat(transpose(heights), num_ranges, 1)
+# elevs = repeat(transpose(elevs), num_ranges, 1)
+# azimuths = repeat(transpose(azimuths), num_ranges, 1)
 function prob_groundgate(elevation_angle, antenna_range, aircraft_height, azimuth) #max_range) ? ?? ? ?? ? ?? 
     
     ###If range of gate is less than altitude, cannot hit ground

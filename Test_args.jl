@@ -134,7 +134,7 @@ function main()
     attributes(fid)["Parameters"] = tasks
     attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
     ###Features array 
-    X = Matrix{Union{Float64,Missing}}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
+    X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
     
     for (i, task) in enumerate(tasks)
   
@@ -159,9 +159,20 @@ function main()
             
         else 
             println("GETTING: $task...")
+            startTime = time() 
             X[:,i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
+            calc_length = time() - startTime
+            println("Completed in $calc_length s"...)
+            println()
         end 
     end 
+
+    ###Filter dataset to remove missing VTs 
+    ###Not possible to do beforehand because spatial information 
+    ###Needs to be retained for some of the parameters
+    X = X[X[:,1].!= FILL_VAL, :]
+    final_shape = size(X)
+    println("FINAL ARRAY SHAPE: $final_shape")
     write_dataset(fid, "X", X)
     close(fid)
 end
