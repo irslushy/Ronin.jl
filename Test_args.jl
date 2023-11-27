@@ -16,10 +16,12 @@ AVG_QUEUE = String[]
 ISO_QUEUE = String[] 
 STD_QUEUE = String[] 
 
+###List of valid options for the config file
 valid_funcs = ["AVG", "ISO", "STD", "AHT", "PGG"]
 
 FILL_VAL = -32000.
 
+###Set up argument table for CLI 
 function parse_commandline()
     
     s = ArgParseSettings()
@@ -48,28 +50,35 @@ function parse_commandline()
     return parse_args(s)
 end
 
+###Parses the specified parameter file 
+###Thinks of the parameter file as a list of tasks to perform on variables in the CFRAD
 function get_task_params(params_file, variablelist; delimiter=",")
     
     tasks = readlines(params_file)
     task_param_list = String[]
     
     for line in tasks
+        ###Ignore comments in the parameter file 
         if line[1] == '#'
             continue
         else
             delimited = split(line, delimiter)
             for token in delimited
+                ###Remove whitespace and see if the token is of the form ABC(DEF)
                 token = strip(token, ' ')
                 expr_ret = match(func_regex,token)
+                ###If it is, make sure that it is both a valid function and a valid variable 
                 if (typeof(expr_ret) != Nothing)
                     if (expr_ret[1] ∉ valid_funcs || expr_ret[2] ∉ variablelist)
                         println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
                         "Potentially invalid function or missing variable\n")
                     else
                         ###Add λ to the front of the token to indicate it is a function call
+                        ###This helps later when trying to determine what to do with each "task" 
                         push!(task_param_list, "λ" * token)
                     end 
                 else
+                    ###Otherwise, check to see if this is a valid variable 
                     if token in variablelist || token ∈ valid_funcs
                         push!(task_param_list, token)
                     else
@@ -83,39 +92,6 @@ function get_task_params(params_file, variablelist; delimiter=",")
     return(task_param_list)
 end 
 
-###Define queues for function queues
-
-function parse_commandline()
-    
-    s = ArgParseSettings()
-
-    @add_arg_table s begin
-        
-        "CFRad_path"
-            help = "Path to input CFRadial File"
-            required = true
-        "--argfile","-f"
-            help = ("File containing comma-delimited list of variables you wish the script to calculate and output\n
-                    Currently supported funcs include AVG(var_name), STD(var_name), and ISO(var_name)\n
-                    Example file content: DBZ, VEL, AVG(DBZ), AVG(VEL), ISO(DBZ), STD(DBZ)\n")
-        "--outfile", "-o"
-            help = "Location to output mined data to"
-            default = "./mined_data.h5"
-        "--mode", "-m" 
-            help = ("FILE or DIRECTORY\nDescribes whether the CFRAD_path describes a file or a director\n
-                    DEFAULT: FILE")
-            default = "FILE"
-        "--QC", "-Q"
-            help = ("TRUE or FALSE\nDescribes whether the given file or files contain manually QCed fields\n
-                    DEFAULT: FALSE")
-    end
-
-    return parse_args(s)
-end
-
-
-
-
 function main()
     
     parsed_args = parse_commandline()
@@ -125,17 +101,25 @@ function main()
 #     end
     ##Load given netCDF file 
     
+    ###Open specfieid dataset and determine its dimensions, 
+    ###as well as the variables contained within it 
     cfrad = NCDataset(parsed_args["CFRad_path"])
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
-    println("\nDIMENSIONS: $cfrad_dims\n")
+
+    println("\nDIMENSIONS: $(cfrad.dim["time"]) times x $(cfrad.dim["range"]) ranges\n")
 
     valid_vars = keys(cfrad)
     
     tasks = get_task_params(parsed_args["argfile"], valid_vars)
     
+    ###Setup h5 file for outputting mined parameters
+    ###processing will proceed in order of the tasks, so 
+    ###add these as an attribute akin to column headers in the H5 dataset
+    ###Also specify the fill value used 
     fid = h5open(parsed_args["outfile"], "w")
     attributes(fid)["Parameters"] = tasks
     attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
+
     ###Features array 
     X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
     
@@ -182,11 +166,23 @@ function main()
             println()
         end 
     end 
+    
+
+    ###Get verification information 
+    ###0 indicates NON METEOROLOGICAL data that was removed during manual QC
+    ###1 indicates METEOROLOGICAL data that was retained during manual QC 
+    println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
+    startTime = time() 
+    Y = [ismissing(x) ? 0 : 1 for x in cfrad["VG"] .- cfrad["VV"]][:]
+    calc_length = time() - startTime
+    println("Completed in $calc_length s"...)
+    println()
 
     ###Filter dataset to remove missing VTs 
     ###Not possible to do beforehand because spatial information 
     ###Needs to be retained for some of the parameters--
-    X = X[X[:,1].!= FILL_VAL, :]
+    X = X[X[:,1] .!= FILL_VAL, :]
+    Y = Y[X[:,1] .!= FILL_VAL, :]
     final_shape = size(X)
     println("FINAL ARRAY SHAPE: $final_shape")
     write_dataset(fid, "X", X)
