@@ -183,17 +183,21 @@ function main()
     ###Not possible to do beforehand because spatial information 
     ###Needs to be retained for some of the parameters--
 
-    INDEXER = X[:,1] .!= FILL_VAL 
+    ###Use VT for filtering 
+    println("REMOVING MISSING DATA BASED ON VT...")
+    INDEXER = map((x) -> Bool(x), [ismissing(x) ? 0 : 1 for x in cfrad["VT"][:]])
+    println("") 
+
     println("INDEXER SHAPE: $(size(INDEXER))")
     println("X SHAPE: $(size(X))")
     println("Y SHAPE: $(size(Y))")
 
     X = X[INDEXER, :]
-    Y = Y[INDEXER, 1]
+    Y = Y[INDEXER, :]
 
-    print("FINAL Y SHAPE: $(size(Y))")
-    final_shape = size(X)
-    println("FINAL ARRAY SHAPE: $final_shape")
+    println()
+    println("FINAL X SHAPE: $(size(X))")
+    println("FINAL Y SHAPE: $(size(Y))")
 
     write_dataset(fid, "X", X)
     write_dataset(fid, "Y", Y)
