@@ -149,6 +149,7 @@ function main()
 
             if (task == "PGG") 
                 startTime = time() 
+                ##Change missing values to FILL_VAL 
                 X[:, i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
                 calc_length = time() - startTime
                 println("Completed in $calc_length s"...)
@@ -173,7 +174,7 @@ function main()
     ###1 indicates METEOROLOGICAL data that was retained during manual QC 
     println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
     startTime = time() 
-    Y = [ismissing(x) ? 0 : 1 for x in cfrad["VG"] .- cfrad["VV"]][:]
+    Y = reshape([ismissing(x) ? 0 : 1 for x in cfrad["VG"] .- cfrad["VV"]][:], (:, 1))
     calc_length = time() - startTime
     println("Completed in $calc_length s"...)
     println()
@@ -181,17 +182,22 @@ function main()
     ###Filter dataset to remove missing VTs 
     ###Not possible to do beforehand because spatial information 
     ###Needs to be retained for some of the parameters--
-    X = X[X[:,1] .!= FILL_VAL, :]
-    Y = Y[X[:,1] .!= FILL_VAL, :]
+
+    INDEXER = X[:,1] .!= FILL_VAL 
+    println("INDEXER SHAPE: $(size(INDEXER))")
+    println("X SHAPE: $(size(X))")
+    println("Y SHAPE: $(size(Y))")
+
+    X = X[INDEXER, :]
+    Y = Y[INDEXER, 1]
+
+    print("FINAL Y SHAPE: $(size(Y))")
     final_shape = size(X)
     println("FINAL ARRAY SHAPE: $final_shape")
+
     write_dataset(fid, "X", X)
+    write_dataset(fid, "Y", Y)
     close(fid)
 end
 
 main()
-
-
-###Parses given parameter file and ensures that specified variables are found within the 
-###passed CFradial file
-###Could potentially internally return this as queues for each function 
