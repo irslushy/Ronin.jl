@@ -56,7 +56,13 @@ module JMLQC_utils
         valid_idxs = .!map(ismissing, updated_var)
 
         ##Returns 0 when missing, 1 when not 
-        return func(updated_var[valid_idxs] .* updated_weights[valid_idxs])
+        result = func(updated_var[valid_idxs] .* updated_weights[valid_idxs])
+
+        # if any(isnan, result)
+        #     println("NaN Error with var: $(var) and weights $(weights)")
+        #     throw("ERROR: NAN")
+        # end 
+        return result 
     end
 
     function calc_iso(var::AbstractMatrix{Union{Missing, Float64}}; weights = iso_weights, window = iso_window)

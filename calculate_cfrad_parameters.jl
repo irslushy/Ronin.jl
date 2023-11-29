@@ -139,6 +139,8 @@ function main()
             raw = @eval $curr_func($cfrad[$var][:,:])[:]
             filled = Vector{Float64}
             filled = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+
+            any(isnan, filled) ? throw("NAN ERROR") : continue
             X[:, i] = filled[:]
             calc_length = time() - startTime
             println("Completed in $calc_length s"...)
@@ -202,6 +204,7 @@ function main()
     write_dataset(fid, "X", X)
     write_dataset(fid, "Y", Y)
     close(fid)
+
 end
 
 main()

@@ -1,7 +1,10 @@
 using NCDatasets
 using HDF5
 using MLJ
+using ScikitLearn
+using PyCall
 
+@sk_import ensemble: RandomForestClassifier
 
 ###Load the data
 radar_data = h5open("./ALEX_VERIFICATION/mined_out.h5")
@@ -32,16 +35,18 @@ MET_FRAC = (MET_LENGTH) / length(Y)
 NON_MET_FRAC = (length(Y) - MET_LENGTH) / length(Y)
 
 println("CLASS BALANCE: $(MET_FRAC) % METEOROLOGICAL DATA, $(NON_MET_FRAC)% NON METEOROLOGICAL DATA")
+
 ###Class weight formula wj = n_samples/(n_classes*n_samples)
 ###Taken from sklearn documentation 
 ###This is a little bit overkill, but a safer way to do this that is more extendible to greater class problems 
-classes = Set(Y)
-class_weights = Dict{Int64, Float64}()
-for class in classes
-    println("CLASS: $(class)")
-end 
+currmodel = RandomForestClassifier(n_estimators = 21, max_depth = 14, n_jobs = -1, random_state = 50, class_weight = "balanced")
 
-
+println("FITTING MODEL")
+startTime = time() 
+println(X)
+println(typeof(X))
+ScikitLearn.fit!(currmodel, X, Y)
+println("COMPLETED FITTING MODEL IN $((time() - startTime)) seconds")
 ###@TODO cut out the predictors eliminated by lasso regression
 
 ##Initialize the RF model to the specified hyperparameters
