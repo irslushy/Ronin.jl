@@ -19,6 +19,7 @@ validation_frac = .08
 testing_frac = 1 - training_frac + validation_frac 
 
 ###Partition the data accordingly 
+println()
 println("DATA LOADED SUCESSFULLY. PARTITIONING...")
 
 (training_x, testing_x), (training_y, testing_y) = partition((X, Y), (training_frac + validation_frac), multi=true)
@@ -34,7 +35,8 @@ MET_LENGTH = length(Y[Y[:] .== 1])
 MET_FRAC = (MET_LENGTH) / length(Y) 
 NON_MET_FRAC = (length(Y) - MET_LENGTH) / length(Y)
 
-println("CLASS BALANCE: $(MET_FRAC) % METEOROLOGICAL DATA, $(NON_MET_FRAC)% NON METEOROLOGICAL DATA")
+println("CLASS BALANCE: $(round(MET_FRAC * 100, sigdigits = 3))% METEOROLOGICAL DATA, $(round(NON_MET_FRAC * 100, sigdigits = 3))% NON METEOROLOGICAL DATA")
+println()
 
 ###Class weight formula wj = n_samples/(n_classes*n_samples)
 ###Taken from sklearn documentation 
@@ -43,8 +45,15 @@ currmodel = RandomForestClassifier(n_estimators = 21, max_depth = 14, n_jobs = -
 
 println("FITTING MODEL")
 startTime = time() 
-ScikitLearn.fit!(currmodel, X, reshape(Y, length(Y),))
+ScikitLearn.fit!(currmodel, training_x, reshape(training_y, length(training_y),))
 println("COMPLETED FITTING MODEL IN $((time() - startTime)) seconds")
+println() 
+
+println("MODEL VERIFICATION:")
+predicted_Y = ScikitLearn.predict(currmodel, testing_x)
+accuracy = sum(predicted_Y .== testing_y) / length(testing_y)
+println("ACCURACY ON TESTING SET: $(round(accuracy * 100, sigdigits=3))%")
+println()
 
 ###@TODO cut out the predictors eliminated by lasso regression
 
