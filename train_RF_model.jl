@@ -43,10 +43,9 @@ currmodel = RandomForestClassifier(n_estimators = 21, max_depth = 14, n_jobs = -
 
 println("FITTING MODEL")
 startTime = time() 
-println(X)
-println(typeof(X))
-ScikitLearn.fit!(currmodel, X, Y)
+ScikitLearn.fit!(currmodel, X, reshape(Y, length(Y),))
 println("COMPLETED FITTING MODEL IN $((time() - startTime)) seconds")
+
 ###@TODO cut out the predictors eliminated by lasso regression
 
 ##Initialize the RF model to the specified hyperparameters
