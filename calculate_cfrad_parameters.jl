@@ -128,11 +128,12 @@ function main()
         ###λ identifier indicates that the requested task is a function 
         if (task[1] == 'λ')
             
+            ###Need to use capturing groups again here
             curr_func = lowercase(task[3:5])
-            var = task[7:9]
+            var = match(func_regex, task)[2]
             
             println("CALCULATING $curr_func OF $var... ")
-            
+            println("TYPE OF VARIABLE: $(typeof(cfrad[var][:,:]))")
             curr_func = Symbol(func_prefix * curr_func)
             startTime = time() 
 
@@ -140,7 +141,8 @@ function main()
             filled = Vector{Float64}
             filled = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
 
-            any(isnan, filled) ? throw("NAN ERROR") : continue
+            #any(isnan, filled) ? throw("NAN ERROR") :
+
             X[:, i] = filled[:]
             calc_length = time() - startTime
             println("Completed in $calc_length s"...)
@@ -174,12 +176,7 @@ function main()
     ###Get verification information 
     ###0 indicates NON METEOROLOGICAL data that was removed during manual QC
     ###1 indicates METEOROLOGICAL data that was retained during manual QC 
-    println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
-    startTime = time() 
-    Y = reshape([ismissing(x) ? 0 : 1 for x in cfrad["VG"] .- cfrad["VV"]][:], (:, 1))
-    calc_length = time() - startTime
-    println("Completed in $calc_length s"...)
-    println()
+    
 
     ###Filter dataset to remove missing VTs 
     ###Not possible to do beforehand because spatial information 
@@ -187,20 +184,40 @@ function main()
 
     ###Use VT for filtering 
     println("REMOVING MISSING DATA BASED ON VT...")
-    INDEXER = map((x) -> Bool(x), [ismissing(x) ? 0 : 1 for x in cfrad["VT"][:]])
+    starttime = time() 
+    VT = cfrad["VT"][:]
+    INDEXER = map((x) -> Bool(x), [ismissing(x) ? 0 : 1 for x in VT])
+    println("COMPLETED IN $(round(time()-startTime, sigdigits=4))s")
     println("") 
 
     println("INDEXER SHAPE: $(size(INDEXER))")
     println("X SHAPE: $(size(X))")
-    println("Y SHAPE: $(size(Y))")
+    #println("Y SHAPE: $(size(Y))")
 
     X = X[INDEXER, :]
-    Y = Y[INDEXER, :]
+    
+   
+
+    println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
+    startTime = time() 
+
+    ###Filter the input arrays first 
+    VG = cfrad["VG"][:][INDEXER]
+    VV = cfrad["VV"][:][INDEXER]
+
+    Y = reshape([ismissing(x) ? 0 : 1 for x in VG .- VV][:], (:, 1))
+    calc_length = time() - startTime
+    println("Completed in $calc_length s"...)
+    println()
 
     println()
     println("FINAL X SHAPE: $(size(X))")
     println("FINAL Y SHAPE: $(size(Y))")
 
+    if any(isnan, X)
+        throw("ERROR: NaN found in features array")
+    end 
+    
     write_dataset(fid, "X", X)
     write_dataset(fid, "Y", Y)
     close(fid)
