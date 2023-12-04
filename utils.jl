@@ -49,6 +49,24 @@ module JMLQC_utils
 
         valid_weights = .!map(ismissing, weights)
 
+        updated_weights = weights[valid_weights]
+        updated_var = var[valid_weights]
+
+        valid_idxs = .!map(ismissing, updated_var)
+
+        ##Returns 0 when missing, 1 when not 
+        result = func(updated_var[valid_idxs] .* updated_weights[valid_idxs])
+
+        # if any(isnan, result)
+        #     println("NaN Error with var: $(var) and weights $(weights)")
+        #     throw("ERROR: NAN")
+        # end 
+        return result 
+    end
+
+    function _weighted_func(var::AbstractMatrix{Union{Float32, Missing}}, weights::Matrix{Union{Missing, Float64}}, func)
+        
+        valid_weights = .!map(ismissing, weights)
 
         updated_weights = weights[valid_weights]
         updated_var = var[valid_weights]
@@ -67,9 +85,9 @@ module JMLQC_utils
 
     function calc_iso(var::AbstractMatrix{Union{Missing, Float64}}; weights = iso_weights, window = iso_window)
 
-        if size(weights) != window
-            error("Weight matrix does not equal window size")
-        end
+        # if size(weights) != window
+        #     error("Weight matrix does not equal window size")
+        # end
 
         missings = map((x) -> ismissing(x), var)
         iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window) 
