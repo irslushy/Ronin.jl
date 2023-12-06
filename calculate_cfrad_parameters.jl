@@ -21,6 +21,8 @@ valid_funcs = ["AVG", "ISO", "STD", "AHT", "PGG"]
 
 FILL_VAL = -32000.
 
+RADAR_FILE_PREFIX = "cfrad"
+
 ###Set up argument table for CLI 
 function parse_commandline()
     
@@ -39,9 +41,9 @@ function parse_commandline()
             help = "Location to output mined data to"
             default = "./mined_data.h5"
         "--mode", "-m" 
-            help = ("FILE or DIRECTORY\nDescribes whether the CFRAD_path describes a file or a director\n
-                    DEFAULT: FILE")
-            default = "FILE"
+            help = ("F or D \nDescribes whether the CFRAD_path describes a file (F) or a directory (D)\n
+                    DEFAULT: F")
+            default = "F"
         "--QC", "-Q"
             help = ("TRUE or FALSE\nDescribes whether the given file or files contain manually QCed fields\n
                     DEFAULT: FALSE")
@@ -92,6 +94,22 @@ function get_task_params(params_file, variablelist; delimiter=",")
     return(task_param_list)
 end 
 
+function parse_directory(dir_path::String)
+    paths = Vector{String}
+    paths = readdir(dir_path)
+
+    task_paths = Vector{String}()
+
+    for path in paths
+        if path[1:length(RADAR_FILE_PREFIX)] != RADAR_FILE_PREFIX
+            println("ERROR: POTENTIALLY INVALID FILE FORMAT FOR FILE: $(path)")
+            continue
+        end 
+        push!(task_paths, path)
+    end
+    return task_paths 
+end 
+
 function main()
     
     parsed_args = parse_commandline()
@@ -101,6 +119,18 @@ function main()
 #     end
     ##Load given netCDF file 
     
+
+    ##If this is a directory, things get a little more complicated 
+    paths = Vector{String}()
+
+    if parsed_args["mode"] == "D"
+        paths = parse_directory(parsed_args["CFRad_path"])
+    else 
+        paths = parsed_args["CFRad_path"]
+    end 
+
+    println("PATHS: $(paths)")
+    return 
     ###Open specfieid dataset and determine its dimensions, 
     ###as well as the variables contained within it 
     cfrad = NCDataset(parsed_args["CFRad_path"])
@@ -137,7 +167,7 @@ function main()
             curr_func = Symbol(func_prefix * curr_func)
             startTime = time() 
 
-            raw = @eval $curr_func($cfrad[$var][:,:])[:]
+            @time raw = @eval $curr_func($cfrad[$var][:,:])[:]
             filled = Vector{Float64}
             filled = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
 
