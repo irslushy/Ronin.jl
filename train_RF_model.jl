@@ -2,7 +2,7 @@ using NCDatasets
 using HDF5
 using MLJ
 using ScikitLearn
-using PyCall
+using PyCall, BSON
 
 @sk_import ensemble: RandomForestClassifier
 
@@ -38,7 +38,6 @@ NON_MET_FRAC = (length(Y) - MET_LENGTH) / length(Y)
 println("CLASS BALANCE: $(round(MET_FRAC * 100, sigdigits = 3))% METEOROLOGICAL DATA, $(round(NON_MET_FRAC * 100, sigdigits = 3))% NON METEOROLOGICAL DATA")
 println()
 
-###Class weight formula wj = n_samples/(n_classes*n_samples)
 ###Taken from sklearn documentation 
 ###This is a little bit overkill, but a safer way to do this that is more extendible to greater class problems 
 currmodel = RandomForestClassifier(n_estimators = 21, max_depth = 14, n_jobs = -1, random_state = 50, class_weight = "balanced")
@@ -55,6 +54,20 @@ accuracy = sum(predicted_Y .== testing_y) / length(testing_y)
 println("ACCURACY ON TESTING SET: $(round(accuracy * 100, sigdigits=3))%")
 println()
 
+println("SAVING MODEL: ") 
+bson("trained_JMLQC_RF.bson", Dict(:a => currmodel))
+
+println("LOADING MODEL: ")
+loaded_model = BSON.load("trained_JMLQC_RF.bson", @__MODULE__)[:a]
+println("LOADED")
+println()
+
+println("TESTING LOADED MODEL") 
+println("MODEL VERIFICATION:")
+predicted_Y = ScikitLearn.predict(currmodel, testing_x)
+accuracy = sum(predicted_Y .== testing_y) / length(testing_y)
+println("ACCURACY ON TESTING SET: $(round(accuracy * 100, sigdigits=3))%")
+println()
 ###@TODO cut out the predictors eliminated by lasso regression
 
 ##Initialize the RF model to the specified hyperparameters
@@ -63,7 +76,7 @@ println()
 ##Train the model using the combined arrays 
 
 ###Evaluation metrics to look at:  
-    # -Confusion matrixl
+    # -Confusion matrix
     # -Normalized confusion matrix 
     # -Accuracy 
     # -Weighted F1 Score 
