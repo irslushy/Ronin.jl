@@ -116,7 +116,7 @@ end
 
 ###Returns X features array, Y Class array, and INDEXER
 ###Indexer dscribes where in the scan contains missing data and where does not 
-function process_file(filepath::String, parsed_args) 
+function process_file(filepath::String, parsed_args)
 
     println("PROCCESING: $(filepath)")
     cfrad = NCDataset(filepath)
@@ -172,6 +172,7 @@ function process_file(filepath::String, parsed_args)
             elseif (task == "AHT")
                 startTime = time()
                 X[:, i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_aht(cfrad)[:]]
+                println("Completed in $(time() - startTime) seconds")
             else
                 startTime = time() 
                 X[:,i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
@@ -261,13 +262,24 @@ function main()
     ##Because IO and because we'd then have to keep a large variety of separate arrays in memory. Therefore, 
     ##I'm guessing this is teh best way to do this, but open to suggestions 
     X = Matrix{Float64}
-    Y = Matrix{Float64} 
+
+    ###COULD OPTIMIZE THIS TO BITMATRIX 
+    Y = Matrix{Int64} 
+
+    ##Will always have at leaset 1 path
     #length_scan = cfrad_dims[1] * cfrad_dims[2] 
+    currpath = pop!(paths) 
+    (newX, newY, indexer) = process_file(currpath, parsed_args)  
+    X = newX
+    Y = newY 
+
+    println("TYPEOF X: $(typeof(X)), TYPEOF Y: $(typeof(Y))")
     starttime = time() 
     for (i, path) in enumerate(paths)
-        (newX, newY, indexer) = process_file(path, parsed_args) 
-        X = vcat(X, newX)
-        Y = vcat(Y, newY) 
+        (newX, newY, indexer) = process_file(path, parsed_args)  
+        println("TYPEOF INITAL X: $(typeof(X))... TYPE OF NEW X: $(typeof(newX))")
+        X = vcat(X, newX)::Matrix{Float64}
+        Y = vcat(Y, newY)::Matrix{Int64}
     end
 
     println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 0)) SECONDS")
@@ -281,12 +293,12 @@ function main()
     ###Not possible to do beforehand because spatial information 
     ###Needs to be retained for some of the parameters--
 
-    ###Use VT for filtering 
-    if any(isnan, X)
-        throw("ERROR: NaN found in features array")
-    end 
     
     ##Probably only want to write once, I/O is very slow 
+    println()
+    println("WRITING DATA TO FILE OF SHAPE $(size(X))")
+    X
+    println("X TYPE: $(typeof(X))")
     write_dataset(fid, "X", X)
     write_dataset(fid, "Y", Y)
     close(fid)
