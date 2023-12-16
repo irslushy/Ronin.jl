@@ -106,7 +106,7 @@ function parse_directory(dir_path::String)
             println("ERROR: POTENTIALLY INVALID FILE FORMAT FOR FILE: $(path)")
             continue
         end 
-        push!(task_paths, path)
+        push!(task_paths, dir_path * "/" * path)
     end
     return task_paths 
 end 
@@ -116,13 +116,13 @@ end
 
 ###Returns X features array, Y Class array, and INDEXER
 ###Indexer dscribes where in the scan contains missing data and where does not 
-function process_file(filepath::String) 
+function process_file(filepath::String, parsed_args) 
 
     println("PROCCESING: $(filepath)")
     cfrad = NCDataset(filepath)
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
 
-    println("\nDIMENSIONS: $(cfrad.dims[1]) times x $(cfrad.dims[2]) ranges\n")
+    println("\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
 
     valid_vars = keys(cfrad)
     tasks = get_task_params(parsed_args["argfile"], valid_vars)
@@ -169,6 +169,9 @@ function process_file(filepath::String)
                 X[:, i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.get_NCP(cfrad)[:]]
                 calc_length = time() - startTime
                 println("Completed in $calc_length s"...)
+            elseif (task == "AHT")
+                startTime = time()
+                X[:, i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_aht(cfrad)[:]]
             else
                 startTime = time() 
                 X[:,i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
@@ -230,33 +233,28 @@ function main()
 
     if parsed_args["mode"] == "D"
         paths = parse_directory(parsed_args["CFRad_path"])
-        println("NOT IMPLEMENTED YET") 
-        return 
     else 
         paths = parsed_args["CFRad_path"]
     end 
 
     println("PATHS: $(paths)")
     
-    ###Open specfieid dataset and determine its dimensions, 
-    ###Open first dataset in the path list to get general information about the cfrad
-    ###as well as the variables contained within it 
-    cfrad = NCDataset(paths[1])
-    cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
-
-    println("\nDIMENSIONS: $(cfrad.dim["time"]) times x $(cfrad.dim["range"]) ranges\n")
-
     ###Setup h5 file for outputting mined parameters
     ###processing will proceed in order of the tasks, so 
     ###add these as an attribute akin to column headers in the H5 dataset
     ###Also specify the fill value used 
     ###This is specified from the config file, so will be the same even when 
     ###processing in directory mode 
+    println("OUTPUT FILE $(parsed_args["outfile"])")
     fid = h5open(parsed_args["outfile"], "w")
-    attributes(fid)["Parameters"] = tasks
-    attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
+
+    ##@TODO: re-add these attributes 
+    #attributes(fid)["Parameters"] = tasks
+    #attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
 
     ###Large features array 
+
+    ##@TODO add checks to ensure that each CFRAD file is of the same dimension (actually this doesn't matter)
 
     ##Dilemma here to ask Michael about: In order to determine the exact size of these arrays, we'd have to 
     ##Loop through each file and figure out the size of the missing data - this would obviously be expensive
@@ -264,14 +262,15 @@ function main()
     ##I'm guessing this is teh best way to do this, but open to suggestions 
     X = Matrix{Float64}
     Y = Matrix{Float64} 
-    length_scan = cfrad_dims[1] * cfrad_dims[2] 
-
+    #length_scan = cfrad_dims[1] * cfrad_dims[2] 
+    starttime = time() 
     for (i, path) in enumerate(paths)
-        (newX, newY, indexer) = process_file(path) 
-        X[i * length_scan:(i+1) * length_scan,:] = newX
-
+        (newX, newY, indexer) = process_file(path, parsed_args) 
+        X = vcat(X, newX)
+        Y = vcat(Y, newY) 
     end
 
+    println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 0)) SECONDS")
 
     ###Get verification information 
     ###0 indicates NON METEOROLOGICAL data that was removed during manual QC
@@ -283,8 +282,6 @@ function main()
     ###Needs to be retained for some of the parameters--
 
     ###Use VT for filtering 
-    
-
     if any(isnan, X)
         throw("ERROR: NaN found in features array")
     end 
