@@ -95,6 +95,7 @@ function get_task_params(params_file, variablelist; delimiter=",")
 end 
 
 function parse_directory(dir_path::String)
+
     paths = Vector{String}
     paths = readdir(dir_path)
 
@@ -110,45 +111,21 @@ function parse_directory(dir_path::String)
     return task_paths 
 end 
 
-function main()
-    
-    parsed_args = parse_commandline()
-#     println("Parsed args:")
-#     for (arg,val) in parsed_args
-#         println("  $arg  =>  $val")
-#     end
-    ##Load given netCDF file 
-    
 
-    ##If this is a directory, things get a little more complicated 
-    paths = Vector{String}()
+#perhaps fold some of main into a function 
 
-    if parsed_args["mode"] == "D"
-        paths = parse_directory(parsed_args["CFRad_path"])
-    else 
-        paths = parsed_args["CFRad_path"]
-    end 
+###Returns X features array, Y Class array, and INDEXER
+###Indexer dscribes where in the scan contains missing data and where does not 
+function process_file(filepath::String) 
 
-    println("PATHS: $(paths)")
-    return 
-    ###Open specfieid dataset and determine its dimensions, 
-    ###as well as the variables contained within it 
-    cfrad = NCDataset(parsed_args["CFRad_path"])
+    println("PROCCESING: $(filepath)")
+    cfrad = NCDataset(filepath)
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
 
-    println("\nDIMENSIONS: $(cfrad.dim["time"]) times x $(cfrad.dim["range"]) ranges\n")
+    println("\nDIMENSIONS: $(cfrad.dims[1]) times x $(cfrad.dims[2]) ranges\n")
 
     valid_vars = keys(cfrad)
-    
     tasks = get_task_params(parsed_args["argfile"], valid_vars)
-    
-    ###Setup h5 file for outputting mined parameters
-    ###processing will proceed in order of the tasks, so 
-    ###add these as an attribute akin to column headers in the H5 dataset
-    ###Also specify the fill value used 
-    fid = h5open(parsed_args["outfile"], "w")
-    attributes(fid)["Parameters"] = tasks
-    attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
 
     ###Features array 
     X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
@@ -176,7 +153,7 @@ function main()
             X[:, i] = filled[:]
             calc_length = time() - startTime
             println("Completed in $calc_length s"...)
-            println()
+            println() 
             
         else 
             println("GETTING: $task...")
@@ -200,22 +177,13 @@ function main()
             end 
             println()
         end 
-    end 
-    
+    end
 
-    ###Get verification information 
-    ###0 indicates NON METEOROLOGICAL data that was removed during manual QC
-    ###1 indicates METEOROLOGICAL data that was retained during manual QC 
-    
 
-    ###Filter dataset to remove missing VTs 
-    ###Not possible to do beforehand because spatial information 
-    ###Needs to be retained for some of the parameters--
-
-    ###Use VT for filtering 
     println("REMOVING MISSING DATA BASED ON VT...")
     starttime = time() 
     VT = cfrad["VT"][:]
+    ##@TODO check to ensure that casting is necesssary here 
     INDEXER = map((x) -> Bool(x), [ismissing(x) ? 0 : 1 for x in VT])
     println("COMPLETED IN $(round(time()-startTime, sigdigits=4))s")
     println("") 
@@ -244,10 +212,84 @@ function main()
     println("FINAL X SHAPE: $(size(X))")
     println("FINAL Y SHAPE: $(size(Y))")
 
+    return(X, Y, INDEXER)
+end 
+
+function main()
+    
+    parsed_args = parse_commandline()
+#     println("Parsed args:")
+#     for (arg,val) in parsed_args
+#         println("  $arg  =>  $val")
+#     end
+    ##Load given netCDF file 
+    
+
+    ##If this is a directory, things get a little more complicated 
+    paths = Vector{String}()
+
+    if parsed_args["mode"] == "D"
+        paths = parse_directory(parsed_args["CFRad_path"])
+        println("NOT IMPLEMENTED YET") 
+        return 
+    else 
+        paths = parsed_args["CFRad_path"]
+    end 
+
+    println("PATHS: $(paths)")
+    
+    ###Open specfieid dataset and determine its dimensions, 
+    ###Open first dataset in the path list to get general information about the cfrad
+    ###as well as the variables contained within it 
+    cfrad = NCDataset(paths[1])
+    cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
+
+    println("\nDIMENSIONS: $(cfrad.dim["time"]) times x $(cfrad.dim["range"]) ranges\n")
+
+    ###Setup h5 file for outputting mined parameters
+    ###processing will proceed in order of the tasks, so 
+    ###add these as an attribute akin to column headers in the H5 dataset
+    ###Also specify the fill value used 
+    ###This is specified from the config file, so will be the same even when 
+    ###processing in directory mode 
+    fid = h5open(parsed_args["outfile"], "w")
+    attributes(fid)["Parameters"] = tasks
+    attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
+
+    ###Large features array 
+
+    ##Dilemma here to ask Michael about: In order to determine the exact size of these arrays, we'd have to 
+    ##Loop through each file and figure out the size of the missing data - this would obviously be expensive
+    ##Because IO and because we'd then have to keep a large variety of separate arrays in memory. Therefore, 
+    ##I'm guessing this is teh best way to do this, but open to suggestions 
+    X = Matrix{Float64}
+    Y = Matrix{Float64} 
+    length_scan = cfrad_dims[1] * cfrad_dims[2] 
+
+    for (i, path) in enumerate(paths)
+        (newX, newY, indexer) = process_file(path) 
+        X[i * length_scan:(i+1) * length_scan,:] = newX
+
+    end
+
+
+    ###Get verification information 
+    ###0 indicates NON METEOROLOGICAL data that was removed during manual QC
+    ###1 indicates METEOROLOGICAL data that was retained during manual QC 
+    
+
+    ###Filter dataset to remove missing VTs 
+    ###Not possible to do beforehand because spatial information 
+    ###Needs to be retained for some of the parameters--
+
+    ###Use VT for filtering 
+    
+
     if any(isnan, X)
         throw("ERROR: NaN found in features array")
     end 
     
+    ##Probably only want to write once, I/O is very slow 
     write_dataset(fid, "X", X)
     write_dataset(fid, "Y", Y)
     close(fid)
