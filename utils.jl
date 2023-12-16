@@ -41,7 +41,7 @@ module JMLQC_utils
         return(data["SQI"][:])
     end
 
-
+    
     ##Applies function given by func to the weighted version of the matrix given by var 
     ##Also applies controls for missing variables to both weights and var 
     ##If there are Missing values in either the variable or the weights, they will be ignored 
@@ -57,13 +57,10 @@ module JMLQC_utils
         ##Returns 0 when missing, 1 when not 
         result = func(updated_var[valid_idxs] .* updated_weights[valid_idxs])
 
-        # if any(isnan, result)
-        #     println("NaN Error with var: $(var) and weights $(weights)")
-        #     throw("ERROR: NAN")
-        # end 
         return result 
     end
 
+    #precompile(_weighted_func, (AbstractMatrix{}, Matrix{}))
     function _weighted_func(var::AbstractMatrix{Union{Float32, Missing}}, weights::Matrix{Union{Missing, Float64}}, func)
         
         valid_weights = .!map(ismissing, weights)
@@ -83,7 +80,9 @@ module JMLQC_utils
         return result 
     end
 
-    function calc_iso(var::AbstractMatrix{Union{Missing, Float64}}; weights = iso_weights, window = iso_window)
+    function calc_iso(var::AbstractMatrix{Union{Missing, Float64}};
+        weights::Matrix{Union{Missing, Float64}} = iso_weights, 
+        window::Matrix{Union{Missing, Float64}} = iso_window)
 
         # if size(weights) != window
         #     error("Weight matrix does not equal window size")
@@ -212,6 +211,19 @@ module JMLQC_utils
         
         ##This would return 
         return(map((w,x,y,z) -> prob_groundgate(w,x,y,z), elevs, ranges, heights, azimuths))
+    end 
+
+    function calc_aht(cfrad)
+
+        num_times = length(cfrad["time"])
+        num_ranges = length(cfrad["range"])
+        
+        elevs = repeat(transpose(cfrad["elevation"][:]), num_ranges, 1)
+        ranges = repeat(cfrad["range"][:], 1, num_times)
+        heights = repeat(transpose(cfrad["altitude"][:]), num_ranges, 1)
+
+        return(map((x,y,z) -> airborne_ht(x,y,z), elevs, ranges, heights))
+
     end 
 
     ###Deprecated functionality, now rolled into _weighted_missing_func
