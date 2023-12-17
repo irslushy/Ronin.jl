@@ -8,20 +8,18 @@ using HDF5
 ###are already obviously missing/nonweather data
 
 ###Prefix of functions for calculating spatially averaged variables in the utils.jl file 
-func_prefix = "calc_"
-func_regex = r"(\w{1,})\((\w{1,})\)"
-
-###Define queues for function queues
-AVG_QUEUE = String[]
-ISO_QUEUE = String[] 
-STD_QUEUE = String[] 
+func_prefix::String= "calc_"
+func_regex::Regex = r"(\w{1,})\((\w{1,})\)"
 
 ###List of valid options for the config file
-valid_funcs = ["AVG", "ISO", "STD", "AHT", "PGG"]
+valid_funcs::Array{String} = ["AVG", "ISO", "STD", "AHT", "PGG"]
 
-FILL_VAL = -32000.
+FILL_VAL::Float64 = -32000.
+RADAR_FILE_PREFIX::String = "cfrad"
 
-RADAR_FILE_PREFIX = "cfrad"
+##Threshold to exclude gates from when <= for model training set 
+NCP_THRESHOLD::Float64 = .2 
+REMOVE_LOW_NCP::Bool = true 
 
 ###Set up argument table for CLI 
 function parse_commandline()
@@ -191,6 +189,10 @@ function process_file(filepath::String, parsed_args)
     INDEXER = map((x) -> Bool(x), [ismissing(x) ? 0 : 1 for x in VT])
     println("COMPLETED IN $(round(time()-startTime, sigdigits=4))s")
     println("") 
+
+    if(REMOVE_LOW_NCP)
+
+    end
 
     println("INDEXER SHAPE: $(size(INDEXER))")
     println("X SHAPE: $(size(X))")
