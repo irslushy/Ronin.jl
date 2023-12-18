@@ -14,6 +14,9 @@ func_regex::Regex = r"(\w{1,})\((\w{1,})\)"
 ###List of valid options for the config file
 valid_funcs::Array{String} = ["AVG", "ISO", "STD", "AHT", "PGG"]
 
+###A note on FILL_VAL: 
+###This will replace NaNs for isolated gates in the spatial parameters 
+
 FILL_VAL::Float64 = -32000.
 RADAR_FILE_PREFIX::String = "cfrad"
 
@@ -144,9 +147,9 @@ function process_file(filepath::String, parsed_args)
 
             @time raw = @eval $curr_func($cfrad[$var][:,:])[:]
             filled = Vector{Float64}
-            filled = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
 
-            #any(isnan, filled) ? throw("NAN ERROR") :
+            any(isnan, filled) ? throw("NAN ERROR") : 
 
             X[:, i] = filled[:]
             calc_length = time() - startTime
@@ -159,21 +162,21 @@ function process_file(filepath::String, parsed_args)
             if (task == "PGG") 
                 startTime = time() 
                 ##Change missing values to FILL_VAL 
-                X[:, i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
+                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
                 calc_length = time() - startTime
                 println("Completed in $calc_length s"...)
             elseif (task == "NCP")
                 startTime = time()
-                X[:, i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.get_NCP(cfrad)[:]]
+                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.get_NCP(cfrad)[:]]
                 calc_length = time() - startTime
                 println("Completed in $calc_length s"...)
             elseif (task == "AHT")
                 startTime = time()
-                X[:, i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_aht(cfrad)[:]]
+                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_aht(cfrad)[:]]
                 println("Completed in $(time() - startTime) seconds")
             else
                 startTime = time() 
-                X[:,i] = [ismissing(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
+                X[:,i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
                 calc_length = time() - startTime
                 println("Completed in $calc_length s"...)
             end 
@@ -208,6 +211,8 @@ function process_file(filepath::String, parsed_args)
     #println("Y SHAPE: $(size(Y))")
 
     X = X[INDEXER, :] 
+    println("NEW X SHAPE: $(size(X))")
+    #any(isnan, X) ? throw("NAN ERROR") : 
 
     println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
     startTime = time() 
@@ -244,10 +249,8 @@ function main()
     if parsed_args["mode"] == "D"
         paths = parse_directory(parsed_args["CFRad_path"])
     else 
-        paths = parsed_args["CFRad_path"]
+        paths = [parsed_args["CFRad_path"]]
     end 
-
-    println("PATHS: $(paths)")
     
     ###Setup h5 file for outputting mined parameters
     ###processing will proceed in order of the tasks, so 
@@ -269,6 +272,7 @@ function main()
     ##Dilemma here to ask Michael about: In order to determine the exact size of these arrays, we'd have to 
     ##Loop through each file and figure out the size of the missing data - this would obviously be expensive
     ##Because IO and because we'd then have to keep a large variety of separate arrays in memory. Therefore, 
+
     ##I'm guessing this is teh best way to do this, but open to suggestions 
     X = Matrix{Float64}
 
