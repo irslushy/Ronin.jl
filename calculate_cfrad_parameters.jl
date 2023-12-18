@@ -95,6 +95,23 @@ function get_task_params(params_file, variablelist; delimiter=",")
     return(task_param_list)
 end 
 
+function get_num_tasks(params_file; delimeter = ",")
+
+    tasks = readlines(params_file)
+    num_tasks = 0 
+
+    for line in tasks
+        if line[1] == '#'
+            continue
+        else 
+            delimited = split(line, delimeter) 
+            num_tasks = num_tasks + length(delimited)
+        end
+    end 
+
+    return num_tasks
+end
+
 function parse_directory(dir_path::String)
 
     paths = Vector{String}
@@ -274,25 +291,36 @@ function main()
     ##Because IO and because we'd then have to keep a large variety of separate arrays in memory. Therefore, 
 
     ##I'm guessing this is teh best way to do this, but open to suggestions 
-    X = Matrix{Float64}
+
+    output_cols = get_num_tasks(parsed_args["argfile"])
+    newX = X = Matrix{Float64}(undef,0,output_cols)
 
     ###COULD OPTIMIZE THIS TO BITMATRIX 
-    Y = Matrix{Int64} 
+    newY = Y = Matrix{Int64}(undef, 0,1) 
 
     ##Will always have at leaset 1 path
     #length_scan = cfrad_dims[1] * cfrad_dims[2] 
-    currpath = pop!(paths) 
-    (newX, newY, indexer) = process_file(currpath, parsed_args)  
-    X = newX
-    Y = newY 
-
     starttime = time() 
-    for (i, path) in enumerate(paths)
-        (newX, newY, indexer) = process_file(path, parsed_args)  
-        println("TYPEOF INITAL X: $(typeof(X))... TYPE OF NEW X: $(typeof(newX))")
-        X = vcat(X, newX)::Matrix{Float64}
-        Y = vcat(Y, newY)::Matrix{Int64}
-    end
+
+    ###Exceptions to handle here (That I've discovered so far)
+    ###Invalid task in config file 
+    for (i, path) in enumerate(paths) 
+        try 
+            (newX, newY, indexer) = process_file(path, parsed_args)
+        catch e
+            if isa(e, DimensionMismatch)
+                println("POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)")
+            else 
+                println("UNRECOVERABLE ERROR")
+                throw(e)
+
+            ##@TODO CATCH exception handling for invalid task 
+            end
+        else
+            X = vcat(X, newX)::Matrix{Float64}
+            Y = vcat(Y, newY)::Matrix{Int64}
+        end
+    end 
 
     println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 0)) SECONDS")
 
