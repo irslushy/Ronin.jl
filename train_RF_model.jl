@@ -2,8 +2,7 @@ using NCDatasets
 using HDF5
 using MLJ
 using ScikitLearn
-using PyCall, BSON
-
+using PyCall, PyCallUtils, BSON
 @sk_import ensemble: RandomForestClassifier
 
 ###Load the data
@@ -41,7 +40,7 @@ println()
 ###Taken from sklearn documentation 
 ###This is a little bit overkill, but a safer way to do this that is more extendible to greater class problems 
 currmodel = RandomForestClassifier(n_estimators = 21, max_depth = 14, n_jobs = -1, random_state = 50, class_weight = "balanced")
-
+println(typeof(currmodel))
 println("FITTING MODEL")
 startTime = time() 
 ScikitLearn.fit!(currmodel, training_x, reshape(training_y, length(training_y),))
@@ -55,19 +54,20 @@ println("ACCURACY ON TESTING SET: $(round(accuracy * 100, sigdigits=3))%")
 println()
 
 println("SAVING MODEL: ") 
-bson("trained_JMLQC_RF.bson", Dict(:a => currmodel))
+BSON.@save "trained_JMLQC_RF.bson" currmodel
 
 println("LOADING MODEL: ")
-loaded_model = BSON.load("trained_JMLQC_RF.bson", @__MODULE__)[:a]
+loaded_model = BSON.load("trained_JMLQC_RF.bson", @__MODULE__)[:currmodel]
 println("LOADED")
 println()
 
 println("TESTING LOADED MODEL") 
 println("MODEL VERIFICATION:")
-predicted_Y = ScikitLearn.predict(currmodel, testing_x)
+predicted_Y = ScikitLearn.predict(loaded_model, testing_x)
 accuracy = sum(predicted_Y .== testing_y) / length(testing_y)
 println("ACCURACY ON TESTING SET: $(round(accuracy * 100, sigdigits=3))%")
 println()
+
 ###@TODO cut out the predictors eliminated by lasso regression
 
 ##Initialize the RF model to the specified hyperparameters
