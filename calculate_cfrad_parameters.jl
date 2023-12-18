@@ -182,25 +182,32 @@ function process_file(filepath::String, parsed_args)
     end
 
 
+    ###Uses INDEXER to remove data not meeting basic quality thresholds
+    ###A value of 0 in INDEXER will remove the data from training/evaluation 
+    ###by the subsequent random forest model 
     println("REMOVING MISSING DATA BASED ON VT...")
     starttime = time() 
     VT = cfrad["VT"][:]
     ##@TODO check to ensure that casting is necesssary here 
-    INDEXER = map((x) -> Bool(x), [ismissing(x) ? 0 : 1 for x in VT])
+    INDEXER = [ismissing(x) ? false : true for x in VT]
     println("COMPLETED IN $(round(time()-startTime, sigdigits=4))s")
     println("") 
 
-    if(REMOVE_LOW_NCP)
-
+    ###Missings might be implicit in this already 
+    if (REMOVE_LOW_NCP)
+        println("REMOVING BASED ON NCP")
+        println("INITIAL COUNT: $(count(INDEXER))")
+        NCP = JMLQC_utils.get_NCP(cfrad)
+        ###bitwise or with inital indexer for where NCP is <= NCP_THRESHOLD
+        INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
+        println("FINAL COUNT: $(count(INDEXER))")
     end
 
     println("INDEXER SHAPE: $(size(INDEXER))")
     println("X SHAPE: $(size(X))")
     #println("Y SHAPE: $(size(Y))")
 
-    X = X[INDEXER, :]
-    
-   
+    X = X[INDEXER, :] 
 
     println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
     startTime = time() 
@@ -275,7 +282,6 @@ function main()
     X = newX
     Y = newY 
 
-    println("TYPEOF X: $(typeof(X)), TYPEOF Y: $(typeof(Y))")
     starttime = time() 
     for (i, path) in enumerate(paths)
         (newX, newY, indexer) = process_file(path, parsed_args)  
