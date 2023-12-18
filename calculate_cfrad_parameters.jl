@@ -22,7 +22,10 @@ RADAR_FILE_PREFIX::String = "cfrad"
 
 ##Threshold to exclude gates from when <= for model training set 
 NCP_THRESHOLD::Float64 = .2 
+PGG_THRESHOLD::Float64 = 1. 
+
 REMOVE_LOW_NCP::Bool = true 
+REMOVE_HIGH_PGG::Bool = true 
 
 ###Set up argument table for CLI 
 function parse_commandline()
@@ -147,7 +150,11 @@ function process_file(filepath::String, parsed_args)
 
     ###Features array 
     X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
-    
+
+    ###Array to hold PGG for indexing  
+    PGG = Matrix{Float64}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
+    PGG_Completed_Flag = false 
+
     for (i, task) in enumerate(tasks)
   
         ###λ identifier indicates that the requested task is a function 
@@ -179,7 +186,10 @@ function process_file(filepath::String, parsed_args)
             if (task == "PGG") 
                 startTime = time() 
                 ##Change missing values to FILL_VAL 
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
+                PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
+                X[:, i] = PGG
+                PGG_Completed_Flag = true 
+
                 calc_length = time() - startTime
                 println("Completed in $calc_length s"...)
             elseif (task == "NCP")
@@ -193,7 +203,7 @@ function process_file(filepath::String, parsed_args)
                 println("Completed in $(time() - startTime) seconds")
             else
                 startTime = time() 
-                X[:,i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
+                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
                 calc_length = time() - startTime
                 println("Completed in $calc_length s"...)
             end 
@@ -208,11 +218,13 @@ function process_file(filepath::String, parsed_args)
     println("REMOVING MISSING DATA BASED ON VT...")
     starttime = time() 
     VT = cfrad["VT"][:]
-    ##@TODO check to ensure that casting is necesssary here 
+
     INDEXER = [ismissing(x) ? false : true for x in VT]
-    println("COMPLETED IN $(round(time()-startTime, sigdigits=4))s")
+    println("COMPLETED IN $(round(time()-starttime, sigdigits=4))s")
     println("") 
 
+    println("FILTERING")
+    starttime=time()
     ###Missings might be implicit in this already 
     if (REMOVE_LOW_NCP)
         println("REMOVING BASED ON NCP")
@@ -222,6 +234,23 @@ function process_file(filepath::String, parsed_args)
         INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
         println("FINAL COUNT: $(count(INDEXER))")
     end
+
+    if (REMOVE_HIGH_PGG)
+
+        println("REMOVING BASED ON PGG")
+        println("INITIAL COUNT: $(count(INDEXER))")
+
+        if (PGG_Completed_Flag)
+            INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
+        else
+            PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
+            INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
+        end
+        println("FINAL COUNT: $(count(INDEXER))")
+        println()
+    end
+    println("COMPLETED IN $(round(time()-starttime, sigdigits=4))s")
+
 
     println("INDEXER SHAPE: $(size(INDEXER))")
     println("X SHAPE: $(size(X))")
@@ -273,25 +302,20 @@ function main()
     ###processing will proceed in order of the tasks, so 
     ###add these as an attribute akin to column headers in the H5 dataset
     ###Also specify the fill value used 
-    ###This is specified from the config file, so will be the same even when 
-    ###processing in directory mode 
+
     println("OUTPUT FILE $(parsed_args["outfile"])")
     fid = h5open(parsed_args["outfile"], "w")
 
     ##@TODO: re-add these attributes 
+    ##@TODO: Figure out how to get the tasks without checking the validity of the file 
     #attributes(fid)["Parameters"] = tasks
-    #attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
-
-    ###Large features array 
-
-    ##@TODO add checks to ensure that each CFRAD file is of the same dimension (actually this doesn't matter)
+    attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
 
     ##Dilemma here to ask Michael about: In order to determine the exact size of these arrays, we'd have to 
     ##Loop through each file and figure out the size of the missing data - this would obviously be expensive
     ##Because IO and because we'd then have to keep a large variety of separate arrays in memory. Therefore, 
 
     ##I'm guessing this is teh best way to do this, but open to suggestions 
-
     output_cols = get_num_tasks(parsed_args["argfile"])
     newX = X = Matrix{Float64}(undef,0,output_cols)
 
@@ -309,7 +333,7 @@ function main()
             (newX, newY, indexer) = process_file(path, parsed_args)
         catch e
             if isa(e, DimensionMismatch)
-                println("POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)")
+                println(Base.stderr, "POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)")
             else 
                 println("UNRECOVERABLE ERROR")
                 throw(e)
