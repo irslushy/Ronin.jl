@@ -189,7 +189,6 @@ function process_file(filepath::String, parsed_args)
                 PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
                 X[:, i] = PGG
                 PGG_Completed_Flag = true 
-
                 calc_length = time() - startTime
                 println("Completed in $calc_length s"...)
             elseif (task == "NCP")
@@ -333,9 +332,9 @@ function main()
             (newX, newY, indexer) = process_file(path, parsed_args)
         catch e
             if isa(e, DimensionMismatch)
-                println(Base.stderr, "POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)")
+                printstyled(Base.stderr, "POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)\n"; color=:red)
             else 
-                println("UNRECOVERABLE ERROR")
+                printstyled(Base.stderr, "UNRECOVERABLE ERROR\n"; color=:red)
                 throw(e)
 
             ##@TODO CATCH exception handling for invalid task 
