@@ -7,31 +7,31 @@ module JMLQC_utils
     using Missings
     using BenchmarkTools
 
-    export get_NCP, airborne_ht, prob_groundgate, calc_avg, calc_std, calc_iso
+    export get_NCP, airborne_ht, prob_groundgate, calc_avg, calc_std, calc_iso, process_single_file
 
-    iso_weights = allowmissing(ones(7,7))
-    iso_weights[4,4] = missing
-    iso_window = (7,7)
+    iso_weights::Matrix{Union{Missing, Float64}} = allowmissing(ones(7,7))
+    iso_weights[4,4] = 1.5
+    iso_window::Tuple{Int64, Int64} = (7,7)
 
-    avg_weights = allowmissing(ones(5,5))
-    avg_weights[3,3] = missing
-    avg_window = (5,5)
+    avg_weights::Matrix{Union{Missing, Float64}} = allowmissing(ones(5,5))
+    avg_weights[3,3] = 1.5
+    avg_window::Tuple{Int64, Int64} = (5,5)
 
-    std_weights = allowmissing(ones(5,5))
-    std_weights[3,3] = missing
-    std_window = (5,5)
+    std_weights::Matrix{Union{Missing, Float64}} = allowmissing(ones(5,5))
+    std_weights[3,3] = 1.5
+    std_window::Tuple{Int64, Int64} = (5,5)
     
-    EarthRadiusKm = 6375.636
-    EarthRadiusSquare = 6375.636 * 6375.636
-    DegToRad = 0.01745329251994372
+    EarthRadiusKm::Float64 = 6375.636
+    EarthRadiusSquar::Float64 = 6375.636 * 6375.636
+    DegToRad::Float64 = 0.01745329251994372
 
     # Beamwidth of ELDORA and TDR
-    eff_beamwidth = 1.8
-    beamwidth = eff_beamwidth*0.017453292;
+    eff_beamwidth::Float64 = 1.8
+    beamwidth::Float64 = eff_beamwidth*0.017453292;
 
     ##Weight matrixes for calculating spatial variables 
     ##TODO: Add these as default arguments for their respective functions 
-    USE_GATE_IN_CALC = false 
+    USE_GATE_IN_CALC::Bool = false 
 
     ##Returns flattened version of NCP 
     function get_NCP(data::NCDataset)
@@ -41,6 +41,153 @@ module JMLQC_utils
         return(data["SQI"][:])
     end
 
+    ###Returns X features array, Y Class array, and INDEXER
+    ###Indexer dscribes where in the scan contains missing data and where does not 
+
+    ###TODO: Modify this to start by accepting an NCDataset so that file I/O can occur 
+    ###Outside of this funciton 
+    ###Then can detemrine valid keys and tasks 
+    """
+    process_single_file(cfrad::NCDataset, parsed_args; REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false )
+
+TBW
+"""
+function process_single_file(cfrad::NCDataset, valid_vars parsed_args; REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false )
+
+        cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
+        println("\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
+
+        tasks = get_task_params(parsed_args["argfile"], valid_vars)
+
+        ###Features array 
+        X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
+
+        ###Array to hold PGG for indexing  
+        PGG = Matrix{Float64}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
+        PGG_Completed_Flag = false 
+
+        for (i, task) in enumerate(tasks)
+    
+            ###λ identifier indicates that the requested task is a function 
+            if (task[1] == 'λ')
+                
+                ###Need to use capturing groups again here
+                curr_func = lowercase(task[3:5])
+                var = match(func_regex, task)[2]
+                
+                println("CALCULATING $curr_func OF $var... ")
+                println("TYPE OF VARIABLE: $(typeof(cfrad[var][:,:]))")
+                curr_func = Symbol(func_prefix * curr_func)
+                startTime = time() 
+
+                @time raw = @eval $curr_func($cfrad[$var][:,:])[:]
+                filled = Vector{Float64}
+                filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+
+                any(isnan, filled) ? throw("NAN ERROR") : 
+
+                X[:, i] = filled[:]
+                calc_length = time() - startTime
+                println("Completed in $calc_length s"...)
+                println() 
+                
+            else 
+                println("GETTING: $task...")
+
+                if (task == "PGG") 
+                    startTime = time() 
+                    ##Change missing values to FILL_VAL 
+                    PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
+                    X[:, i] = PGG
+                    PGG_Completed_Flag = true 
+                    calc_length = time() - startTime
+                    println("Completed in $calc_length s"...)
+                elseif (task == "NCP")
+                    startTime = time()
+                    X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.get_NCP(cfrad)[:]]
+                    calc_length = time() - startTime
+                    println("Completed in $calc_length s"...)
+                elseif (task == "AHT")
+                    startTime = time()
+                    X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_aht(cfrad)[:]]
+                    println("Completed in $(time() - startTime) seconds")
+                else
+                    startTime = time() 
+                    X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
+                    calc_length = time() - startTime
+                    println("Completed in $calc_length s"...)
+                end 
+                println()
+            end 
+        end
+
+
+        ###Uses INDEXER to remove data not meeting basic quality thresholds
+        ###A value of 0 in INDEXER will remove the data from training/evaluation 
+        ###by the subsequent random forest model 
+        println("REMOVING MISSING DATA BASED ON VT...")
+        starttime = time() 
+        VT = cfrad["VT"][:]
+
+        INDEXER = [ismissing(x) ? false : true for x in VT]
+        println("COMPLETED IN $(round(time()-starttime, sigdigits=4))s")
+        println("") 
+
+        println("FILTERING")
+        starttime=time()
+        ###Missings might be implicit in this already 
+        if (REMOVE_LOW_NCP)
+            println("REMOVING BASED ON NCP")
+            println("INITIAL COUNT: $(count(INDEXER))")
+            NCP = JMLQC_utils.get_NCP(cfrad)
+            ###bitwise or with inital indexer for where NCP is <= NCP_THRESHOLD
+            INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
+            println("FINAL COUNT: $(count(INDEXER))")
+        end
+
+        if (REMOVE_HIGH_PGG)
+
+            println("REMOVING BASED ON PGG")
+            println("INITIAL COUNT: $(count(INDEXER))")
+
+            if (PGG_Completed_Flag)
+                INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
+            else
+                PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
+                INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
+            end
+            println("FINAL COUNT: $(count(INDEXER))")
+            println()
+        end
+        println("COMPLETED IN $(round(time()-starttime, sigdigits=4))s")
+
+
+        println("INDEXER SHAPE: $(size(INDEXER))")
+        println("X SHAPE: $(size(X))")
+        #println("Y SHAPE: $(size(Y))")
+
+        X = X[INDEXER, :] 
+        println("NEW X SHAPE: $(size(X))")
+        #any(isnan, X) ? throw("NAN ERROR") : 
+
+        println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
+        startTime = time() 
+
+        ###Filter the input arrays first 
+        VG = cfrad["VG"][:][INDEXER]
+        VV = cfrad["VV"][:][INDEXER]
+
+        Y = reshape([ismissing(x) ? 0 : 1 for x in VG .- VV][:], (:, 1))
+        calc_length = time() - startTime
+        println("Completed in $calc_length s"...)
+        println()
+
+        println()
+        println("FINAL X SHAPE: $(size(X))")
+        println("FINAL Y SHAPE: $(size(Y))")
+
+        return(X, Y, INDEXER)
+    end 
     
     ##Applies function given by func to the weighted version of the matrix given by var 
     ##Also applies controls for missing variables to both weights and var 
@@ -56,6 +203,11 @@ module JMLQC_utils
 
         ##Returns 0 when missing, 1 when not 
         result = func(updated_var[valid_idxs] .* updated_weights[valid_idxs])
+
+        if (isnan(result))
+            print("ERROR: NaN with var $(var)")
+            throw(UndefVarError(:x))
+        end
 
         return result 
     end
@@ -77,6 +229,7 @@ module JMLQC_utils
         #     println("NaN Error with var: $(var) and weights $(weights)")
         #     throw("ERROR: NAN")
         # end 
+
         return result 
     end
 
