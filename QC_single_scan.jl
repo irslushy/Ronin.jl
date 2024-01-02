@@ -7,6 +7,9 @@ using ArgParse
 include("./utils.jl")
 using .JMLQC_utils 
 
+using ScikitLearn
+@sk_import ensemble: RandomForestClassifier
+
 ###Set up argument table for CLI 
 ###TODO: Add argument to decide whether to write input QC file to same CFRad or NEW CFrad 
 function parse_commandline()
@@ -42,11 +45,14 @@ function main()
 
     input_cfrad = NCDataset(parsed_args["CFRad_path"])
 
-    #X, Y, indexer = JMLQC_utils.process_single_file(input_cfrad, keys(input_cfrad), parsed_args)
-    
+    X, Y, indexer = JMLQC_utils.process_single_file(input_cfrad, keys(input_cfrad), parsed_args)
+
     ##Load saved RF model 
     ##assume that default SYMBOL for saved model is savedmodel
     trained_model = BSON.load(parsed_args["model_path"], @__MODULE__)[:currmodel]
+    predictions = ScikitLearn.predict(trained_model, X)
+    printstyled("ACCURACY: $(round(sum(predictions .== Y) / length(Y) * 100, sigdigits=3)) %\n", color=:green)
+
 end 
 
 main()
