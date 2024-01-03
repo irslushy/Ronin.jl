@@ -33,6 +33,24 @@ module JMLQC_utils
     ##TODO: Add these as default arguments for their respective functions 
     USE_GATE_IN_CALC::Bool = false 
 
+
+    ###Prefix of functions for calculating spatially averaged variables in the utils.jl file 
+    func_prefix::String= "calc_"
+    func_regex::Regex = r"(\w{1,})\((\w{1,})\)"
+
+    valid_funcs::Array{String} = ["AVG", "ISO", "STD", "AHT", "PGG"]
+
+    FILL_VAL::Float64 = -32000.
+    RADAR_FILE_PREFIX::String = "cfrad"
+
+    ##Threshold to exclude gates from when <= for model training set 
+    NCP_THRESHOLD::Float64 = .2 
+    PGG_THRESHOLD::Float64 = 1. 
+
+    REMOVE_LOW_NCP::Bool = true 
+    REMOVE_HIGH_PGG::Bool = true 
+
+
     ##Returns flattened version of NCP 
     function get_NCP(data::NCDataset)
         ###Some ternary operator + short circuit trickery here 
@@ -52,7 +70,55 @@ module JMLQC_utils
 
 TBW
 """
-function process_single_file(cfrad::NCDataset, valid_vars parsed_args; REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false )
+
+
+
+###Parses the specified parameter file 
+###Thinks of the parameter file as a list of tasks to perform on variables in the CFRAD
+"Function to parse a given task list
+ Also performs checks to ensure that the specified 
+ tasks are able to be performed to the specified CFRad file"
+function get_task_params(params_file, variablelist; delimiter=",")
+    
+    tasks = readlines(params_file)
+    task_param_list = String[]
+    
+    for line in tasks
+        ###Ignore comments in the parameter file 
+        if line[1] == '#'
+            continue
+        else
+            delimited = split(line, delimiter)
+            for token in delimited
+                ###Remove whitespace and see if the token is of the form ABC(DEF)
+                token = strip(token, ' ')
+                expr_ret = match(func_regex,token)
+                ###If it is, make sure that it is both a valid function and a valid variable 
+                if (typeof(expr_ret) != Nothing)
+                    if (expr_ret[1] ∉ valid_funcs || expr_ret[2] ∉ variablelist)
+                        println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
+                        "Potentially invalid function or missing variable\n")
+                    else
+                        ###Add λ to the front of the token to indicate it is a function call
+                        ###This helps later when trying to determine what to do with each "task" 
+                        push!(task_param_list, "λ" * token)
+                    end 
+                else
+                    ###Otherwise, check to see if this is a valid variable 
+                    if token in variablelist || token ∈ valid_funcs
+                        push!(task_param_list, token)
+                    else
+                        println("\"$token\" NOT FOUND IN CFRAD FILE.... CONTINUING...\n")
+                    end
+                end
+            end
+        end 
+    end 
+    
+    return(task_param_list)
+end 
+
+function process_single_file(cfrad::NCDataset, valid_vars, parsed_args,; REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false )
 
         cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
         println("\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
