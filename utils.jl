@@ -118,7 +118,8 @@ function get_task_params(params_file, variablelist; delimiter=",")
     return(task_param_list)
 end 
 
-function process_single_file(cfrad::NCDataset, valid_vars, parsed_args,; REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false )
+function process_single_file(cfrad::NCDataset, valid_vars, parsed_args,; 
+    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false )
 
         cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
         println("\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
@@ -236,23 +237,31 @@ function process_single_file(cfrad::NCDataset, valid_vars, parsed_args,; REMOVE_
         println("NEW X SHAPE: $(size(X))")
         #any(isnan, X) ? throw("NAN ERROR") : 
 
-        println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
-        startTime = time() 
+        if HAS_MANUAL_QC
 
-        ###Filter the input arrays first 
-        VG = cfrad["VG"][:][INDEXER]
-        VV = cfrad["VV"][:][INDEXER]
+            println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
+            startTime = time() 
+            ###try catch block here to see if the scan has manual QC
+            ###Filter the input arrays first 
+            VG = cfrad["VG"][:][INDEXER]
+            VV = cfrad["VV"][:][INDEXER]
 
-        Y = reshape([ismissing(x) ? 0 : 1 for x in VG .- VV][:], (:, 1))
-        calc_length = time() - startTime
-        println("Completed in $calc_length s"...)
-        println()
+            Y = reshape([ismissing(x) ? 0 : 1 for x in VG .- VV][:], (:, 1))
+            calc_length = time() - startTime
+            println("Completed in $calc_length s"...)
+            println()
 
-        println()
-        println("FINAL X SHAPE: $(size(X))")
-        println("FINAL Y SHAPE: $(size(Y))")
 
-        return(X, Y, INDEXER)
+            println()
+            println("FINAL X SHAPE: $(size(X))")
+            println("FINAL Y SHAPE: $(size(Y))")
+
+            return(X, Y, INDEXER)
+        else
+            println("NO MANUAL QC")
+            println("FINAL X SHAPE: $(size(X))")
+            return(X, false, INDEXER)
+        end 
     end 
     
     ##Applies function given by func to the weighted version of the matrix given by var 
