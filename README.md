@@ -10,6 +10,9 @@ For applying the algorithm using an existing/trained RF model, see [QC_single_sc
 CONVENTIONS: For the "verification 'Y'" array in the training scripts, I have adopted the convention that 1 indicates METEOROLOGICAL DATA, and 0 indicates NON_METEOROLOGICAL DATA 
 
 Furthermore, for QC-ed variables in the output files, the following is adopted:  
-    UNDEF/MISSING: MISSING DATA IN ORIGINAL FILE
-    0: REMOVED IN MLQC (AFTER BASE THRESHOLDS WERE APPLIED)
-    VALUE: RETAINED IN MLQC 
+    UNDEF/MISSING: MISSING DATA IN ORIGINAL FILE  
+    0: REMOVED IN MLQC (AFTER BASE THRESHOLDS WERE APPLIED)  
+    VALUE: RETAINED IN MLQC  
+
+Data is written out to NetCDF files to be CF-Compliant in Julia and other column-major languages, such that it has dimensions of (range x time). 
+However, if it were loaded in a row-major language, such as python, it would take on dimensions of (time x range). 
