@@ -10,6 +10,12 @@ using .JMLQC_utils
 using ScikitLearn
 @sk_import ensemble: RandomForestClassifier
 
+###Change this to apply quality control to different variables in CFRAD
+VARIALBES_TO_QC::Vector{String} = ["ZZ", "VV"]
+
+###New variable name in netcdf file will be VARNAME * QC_SUFFIX 
+QC_SUFFIX::String = "_FILTERED"
+
 ###Set up argument table for CLI 
 ###TODO: Add argument to decide whether to write input QC file to same CFRad or NEW CFrad 
 function parse_commandline()
@@ -44,7 +50,8 @@ function main()
     ##Extra safe about it 
     parsed_args = parse_commandline() 
 
-    input_cfrad = NCDataset(parsed_args["CFRad_path"])
+    ##Open in append mode so output variables can be written 
+    input_cfrad = NCDataset(parsed_args["CFRad_path"], "a")
     cfrad_dims = (input_cfrad.dim["range"], input_cfrad.dim["time"])
 
     ###Will generally NOT return Y, but only (X, indexer)
@@ -55,21 +62,41 @@ function main()
     trained_model = BSON.load(parsed_args["model_path"], @__MODULE__)[:currmodel]
     predictions = ScikitLearn.predict(trained_model, X)
 
-    ##Create new field to reshape QCed field to 
-    NEW_FIELD = Matrix{Float64}(undef, cfrad_dims)
+    ##QC each variable in VARIALBES_TO_QC
+    for var in VARIALBES_TO_QC
 
-    ##Parse relevant DBZ data by applying indexer 
-    QCED_FIELDS = input_cfrad["ZZ"][:][indexer]
-    initial_count = count(!iszero, QCED_FIELDS)
-    ##Apply predictions from model 
-    ##If model predicts 1, this indicates a prediction of meteorological data 
-    ##WHY are we still having to deal with missings here? 
-    QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : 0, enumerate(QCED_FIELDS))
-    final_count = count(!iszero, QCED_FIELDS)
-    
-    println()
-    printstyled("INITIAL COUNT OF VALID DATAPOINTS: $(initial_count)
-    \nFINAL COUNT: $(final_count)\n", color=:blue)
+        ##Create new field to reshape QCed field to 
+        NEW_FIELD = Matrix{Float64}(undef, cfrad_dims) 
+
+        ##Only modify relevant data based on indexer, everything else should be fill value 
+        QCED_FIELDS = input_cfrad[var][:][indexer]
+        initial_count = count(!iszero, QCED_FIELDS)
+        ##Apply predictions from model 
+        ##If model predicts 1, this indicates a prediction of meteorological data 
+        QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : 0, enumerate(QCED_FIELDS))
+        final_count = count(!iszero, QCED_FIELDS)
+        
+        ###Need to reconstruct original 
+        NEW_FIELD = NEW_FIELD[:]
+        NEW_FIELD[indexer] = QCED_FIELDS
+        NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
+
+        defVar(input_cfrad, var * QC_SUFFIX, NEW_FIELD, ("range", "time"))
+
+        println()
+        printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
+        println("FINAL COUNT OF DATAPOINTS IN ZZ: $(final_count)")
+    end 
+    println("DID IT WORK?")
+    ##OUTPUT CFRAD VARIABLE CONVENTIONS:
+    ##UNDEF/MISSING: MISSING DATA IN ORIGINAL FILE
+    ##0: REMOVED IN MLQC (AFTER BASE THRESHOLDS WERE APPLIED)
+    ##VALUE: RETAINED IN MLQC 
+
+    ##Add variable to 
+
+    ##Write to output file 
+
     ##TOO: Add fields to QC to parameter file 
     #printstyled("ACCURACY: $(round(sum(predictions .== Y) / length(Y) * 100, sigdigits=3)) %\n", color=:green)
 
