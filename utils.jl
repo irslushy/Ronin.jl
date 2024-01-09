@@ -59,20 +59,6 @@ module JMLQC_utils
         return(data["SQI"][:])
     end
 
-    ###Returns X features array, Y Class array, and INDEXER
-    ###Indexer dscribes where in the scan contains missing data and where does not 
-
-    ###TODO: Modify this to start by accepting an NCDataset so that file I/O can occur 
-    ###Outside of this funciton 
-    ###Then can detemrine valid keys and tasks 
-    """
-    process_single_file(cfrad::NCDataset, parsed_args; REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false )
-
-TBW
-"""
-
-
-
 ###Parses the specified parameter file 
 ###Thinks of the parameter file as a list of tasks to perform on variables in the CFRAD
 "Function to parse a given task list
@@ -299,12 +285,6 @@ function process_single_file(cfrad::NCDataset, valid_vars, parsed_args,;
 
         ##Returns 0 when missing, 1 when not 
         result = func(updated_var[valid_idxs] .* updated_weights[valid_idxs])
-
-        # if any(isnan, result)
-        #     println("NaN Error with var: $(var) and weights $(weights)")
-        #     throw("ERROR: NAN")
-        # end 
-
         return result 
     end
 
@@ -333,13 +313,7 @@ function process_single_file(cfrad::NCDataset, valid_vars, parsed_args,;
         iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window) 
     end
 
-    ###Emulates np.nanmean function while implementing weighted averaging
-
-
     function airborne_ht(elevation_angle, antenna_range, aircraft_height)
-    #     global GLOBL_COUNTER
-    #     print(GLOBL_COUNTER)
-    #     GLOBL_COUNTER = GLOBL_COUNTER + 1
         ##Initial heights are in meters, convert to km 
         aRange_km, acHeight_km = (antenna_range, aircraft_height) ./ 1000
         term1 = aRange_km^2 + EarthRadiusKm^2
@@ -454,41 +428,4 @@ function process_single_file(cfrad::NCDataset, valid_vars, parsed_args,;
 
     end 
 
-    ###Deprecated functionality, now rolled into _weighted_missing_func
-
-    # function _missing_weights_avg(var::AbstractMatrix{Union{Missing, Float32}}, weights::AbstractMatrix{Union{Missing, Float64}})
-
-    #     valid_weights = .!map(ismissing, weights)
-
-
-    #     updated_weights = weights[valid_weights]
-    #     updated_var = var[valid_weights]
-
-    #     valid_idxs = .!map(ismissing, updated_var)
-    #     return(mean((updated_var[valid_idxs] .* updated_weights[valid_idxs])))
-    # end
-
-    # function _missing_weights_avg(var::AbstractMatrix{Union{Missing, Float64}}, weights::AbstractMatrix{Union{Missing, Float64}})
-
-    #     valid_weights = .!map(ismissing, weights)
-
-
-    #     updated_weights = weights[valid_weights]
-    #     updated_var = var[valid_weights]
-
-    #     valid_idxs = .!map(ismissing, updated_var)
-    #     return(mean((updated_var[valid_idxs] .* updated_weights[valid_idxs])))
-    # end
-
-    # function _missing_weights_avg(var, weights) 
-
-    #     valid_weights = .!map(ismissing, weights)
-
-
-    #     updated_weights = weights[valid_weights]
-    #     updated_var = var[valid_weights]
-
-    #     valid_idxs = .!map(ismissing, updated_var)
-    #     return(mean((updated_var[valid_idxs] .* updated_weights[valid_idxs])))
-    # end
 end
