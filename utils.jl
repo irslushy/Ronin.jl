@@ -9,16 +9,17 @@ module JMLQC_utils
 
     export get_NCP, airborne_ht, prob_groundgate, calc_avg, calc_std, calc_iso, process_single_file
 
+    center_weight::Float64 = 0
     iso_weights::Matrix{Union{Missing, Float64}} = allowmissing(ones(7,7))
-    iso_weights[4,4] = 1.5
+    iso_weights[4,4] = center_weight 
     iso_window::Tuple{Int64, Int64} = (7,7)
 
     avg_weights::Matrix{Union{Missing, Float64}} = allowmissing(ones(5,5))
-    avg_weights[3,3] = 1.5
+    avg_weights[3,3] = center_weight 
     avg_window::Tuple{Int64, Int64} = (5,5)
 
     std_weights::Matrix{Union{Missing, Float64}} = allowmissing(ones(5,5))
-    std_weights[3,3] = 1.5
+    std_weights[3,3] = center_weight 
     std_window::Tuple{Int64, Int64} = (5,5)
     
     EarthRadiusKm::Float64 = 6375.636

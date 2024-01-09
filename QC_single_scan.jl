@@ -3,6 +3,7 @@ using HDF5
 using MLJ
 using PyCall, PyCallUtils, BSON
 using ArgParse
+using Missings 
 
 include("./utils.jl")
 using .JMLQC_utils 
@@ -12,7 +13,6 @@ using ScikitLearn
 
 ###Change this to apply quality control to different variables in CFRAD
 VARIALBES_TO_QC::Vector{String} = ["ZZ", "VV"]
-
 ###New variable name in netcdf file will be VARNAME * QC_SUFFIX 
 QC_SUFFIX::String = "_FILTERED"
 
@@ -66,15 +66,15 @@ function main()
     for var in VARIALBES_TO_QC
 
         ##Create new field to reshape QCed field to 
-        NEW_FIELD = Matrix{Float64}(undef, cfrad_dims) 
+        NEW_FIELD = missings(Float64, cfrad_dims) 
 
         ##Only modify relevant data based on indexer, everything else should be fill value 
         QCED_FIELDS = input_cfrad[var][:][indexer]
         initial_count = count(!iszero, QCED_FIELDS)
         ##Apply predictions from model 
         ##If model predicts 1, this indicates a prediction of meteorological data 
-        QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : 0, enumerate(QCED_FIELDS))
-        final_count = count(!iszero, QCED_FIELDS)
+        QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : missing, enumerate(QCED_FIELDS))
+        final_count = count(!ismissing, QCED_FIELDS)
         
         ###Need to reconstruct original 
         NEW_FIELD = NEW_FIELD[:]
@@ -85,21 +85,9 @@ function main()
 
         println()
         printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
-        println("FINAL COUNT OF DATAPOINTS IN ZZ: $(final_count)")
+        println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
     end 
     println("DID IT WORK?")
-    ##OUTPUT CFRAD VARIABLE CONVENTIONS:
-    ##UNDEF/MISSING: MISSING DATA IN ORIGINAL FILE
-    ##0: REMOVED IN MLQC (AFTER BASE THRESHOLDS WERE APPLIED)
-    ##VALUE: RETAINED IN MLQC 
-
-    ##Add variable to 
-
-    ##Write to output file 
-
-    ##TOO: Add fields to QC to parameter file 
-    #printstyled("ACCURACY: $(round(sum(predictions .== Y) / length(Y) * 100, sigdigits=3)) %\n", color=:green)
-
 end 
 
 main()
