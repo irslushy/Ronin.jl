@@ -60,53 +60,56 @@ module JMLQC_utils
         return(data["SQI"][:])
     end
 
-###Parses the specified parameter file 
-###Thinks of the parameter file as a list of tasks to perform on variables in the CFRAD
-"Function to parse a given task list
- Also performs checks to ensure that the specified 
- tasks are able to be performed to the specified CFRad file"
-function get_task_params(params_file, variablelist; delimiter=",")
-    
-    tasks = readlines(params_file)
-    task_param_list = String[]
-    
-    for line in tasks
-        ###Ignore comments in the parameter file 
-        if line[1] == '#'
-            continue
-        else
-            delimited = split(line, delimiter)
-            for token in delimited
-                ###Remove whitespace and see if the token is of the form ABC(DEF)
-                token = strip(token, ' ')
-                expr_ret = match(func_regex,token)
-                ###If it is, make sure that it is both a valid function and a valid variable 
-                if (typeof(expr_ret) != Nothing)
-                    if (expr_ret[1] ∉ valid_funcs || expr_ret[2] ∉ variablelist)
-                        println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
-                        "Potentially invalid function or missing variable\n")
+    function get_RNG(data::NCDataset)
+        return(repeat(data["range"][:], 1, length(data["time"])))
+    end 
+
+    ###Parses the specified parameter file 
+    ###Thinks of the parameter file as a list of tasks to perform on variables in the CFRAD
+    "Function to parse a given task list
+    Also performs checks to ensure that the specified 
+    tasks are able to be performed to the specified CFRad file"
+    function get_task_params(params_file, variablelist; delimiter=",")
+        
+        tasks = readlines(params_file)
+        task_param_list = String[]
+        
+        for line in tasks
+            ###Ignore comments in the parameter file 
+            if line[1] == '#'
+                continue
+            else
+                delimited = split(line, delimiter)
+                for token in delimited
+                    ###Remove whitespace and see if the token is of the form ABC(DEF)
+                    token = strip(token, ' ')
+                    expr_ret = match(func_regex,token)
+                    ###If it is, make sure that it is both a valid function and a valid variable 
+                    if (typeof(expr_ret) != Nothing)
+                        if (expr_ret[1] ∉ valid_funcs || expr_ret[2] ∉ variablelist)
+                            println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
+                            "Potentially invalid function or missing variable\n")
+                        else
+                            ###Add λ to the front of the token to indicate it is a function call
+                            ###This helps later when trying to determine what to do with each "task" 
+                            push!(task_param_list, "λ" * token)
+                        end 
                     else
-                        ###Add λ to the front of the token to indicate it is a function call
-                        ###This helps later when trying to determine what to do with each "task" 
-                        push!(task_param_list, "λ" * token)
-                    end 
-                else
-                    ###Otherwise, check to see if this is a valid variable 
-                    if token in variablelist || token ∈ valid_funcs
-                        push!(task_param_list, token)
-                    else
-                        println("\"$token\" NOT FOUND IN CFRAD FILE.... CONTINUING...\n")
+                        ###Otherwise, check to see if this is a valid variable 
+                        if token in variablelist || token ∈ valid_funcs
+                            push!(task_param_list, token)
+                        else
+                            println("\"$token\" NOT FOUND IN CFRAD FILE.... CONTINUING...\n")
+                        end
                     end
                 end
-            end
+            end 
         end 
+        return(task_param_list)
     end 
-    
-    return(task_param_list)
-end 
 
-function process_single_file(cfrad::NCDataset, valid_vars, parsed_args,; 
-    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false )
+    function process_single_file(cfrad::NCDataset, valid_vars, parsed_args,; 
+        HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false )
 
         cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
         println("\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
@@ -145,25 +148,28 @@ function process_single_file(cfrad::NCDataset, valid_vars, parsed_args,;
                 println("Completed in $calc_length s"...)
                 println() 
                 
+            ##Currently will replace MISSINGS and NaNs with FILL_VAL in the spatial parameters 
             else 
                 println("GETTING: $task...")
 
                 if (task == "PGG") 
                     startTime = time() 
-                    ##Change missing values to FILL_VAL 
+                    ##Grab PGG for use for filtering out low-quality data later 
                     PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
-                    X[:, i] = PGG
+                    X[:, i] = PGG 
                     PGG_Completed_Flag = true 
-                    calc_length = time() - startTime
-                    println("Completed in $calc_length s"...)
+                    println("Completed in $(time() - startTime) seconds")
                 elseif (task == "NCP")
                     startTime = time()
                     X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.get_NCP(cfrad)[:]]
-                    calc_length = time() - startTime
-                    println("Completed in $calc_length s"...)
+                    println("Completed in $(time() - startTime) seconds")
                 elseif (task == "AHT")
                     startTime = time()
                     X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_aht(cfrad)[:]]
+                    println("Completed in $(time() - startTime) seconds")
+                elseif (task == "RNG")
+                    startTime = time()
+                    X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.get_RNG(cfrad)[:]]
                     println("Completed in $(time() - startTime) seconds")
                 else
                     startTime = time() 
@@ -428,5 +434,7 @@ function process_single_file(cfrad::NCDataset, valid_vars, parsed_args,;
         return(map((x,y,z) -> airborne_ht(x,y,z), elevs, ranges, heights))
 
     end 
+
+    
 
 end
