@@ -37,7 +37,7 @@ module JMLQC_utils
     func_regex::Regex = r"(\w{1,})\((\w{1,})\)"
 
     ###List of functions currently implemented in the module
-    valid_funcs::Array{String} = ["AVG", "ISO", "STD", "AHT", "PGG"]
+    valid_funcs::Array{String} = ["AVG", "ISO", "STD", "AHT", "PGG", "RNG", "NRG"] 
 
     FILL_VAL::Float64 = -32000.
     RADAR_FILE_PREFIX::String = "cfrad"
@@ -49,6 +49,10 @@ module JMLQC_utils
     REMOVE_LOW_NCP::Bool = true 
     REMOVE_HIGH_PGG::Bool = true 
 
+
+    ###Side note - I do realize that Julia will return the last statement of a function automatically, 
+    ###but am including the return statement here for increased code clarity 
+    
     ##Returns flattened version of NCP 
     function get_NCP(data::NCDataset)
         ###Some ternary operator + short circuit trickery here 
@@ -61,6 +65,12 @@ module JMLQC_utils
         return(repeat(data["range"][:], 1, length(data["time"])))
     end 
     
+    function get_NRG(data::NCDataset)
+        rngs = get_RNG(data)
+        alts = repeat(transpose(data["altitude"][:]), length(data["range"]), 1)
+        return(rngs ./ alts)
+    end 
+
     function get_num_tasks(params_file; delimeter = ",")
 
         tasks = readlines(params_file)
@@ -131,7 +141,7 @@ module JMLQC_utils
                         if token in variablelist || token ∈ valid_funcs
                             push!(task_param_list, token)
                         else
-                            println("\"$token\" NOT FOUND IN CFRAD FILE.... CONTINUING...\n")
+                            printstyled("\"$token\" NOT FOUND IN CFRAD FILE.... POTENTIAL ERROR IN CONFIG FILE\n", color=:red)
                         end
                     end
                 end
@@ -205,6 +215,10 @@ module JMLQC_utils
                 elseif (task == "RNG") 
                     startTime = time() 
                     X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.get_RNG(cfrad)[:]]
+                    println("Completed in $(time() - startTime) seconds")
+                elseif (task == "NRG")
+                    startTime = time()
+                    X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.get_NRG(cfrad)[:]]
                     println("Completed in $(time() - startTime) seconds")
                 else
                     startTime = time() 
@@ -313,8 +327,7 @@ module JMLQC_utils
         valid_idxs = .!map(ismissing, updated_var)
 
         ##Returns 0 when missing, 1 when not 
-        result = func(updated_var[valid_idxs] .* updated_weights[valid_idxs])
-        return result 
+        return(func(updated_var[valid_idxs] .* updated_weights[valid_idxs]))
     end
 
     function _weighted_func(var::Matrix{Float64}, weights::Matrix{Union{Missing, Float64}}, func)
@@ -403,8 +416,6 @@ module JMLQC_utils
             end
         end 
     end 
-
-
 
     ##Calculate the windowed standard deviation of a given variablevariable 
     function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_weights, window = std_window)
