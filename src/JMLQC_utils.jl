@@ -7,7 +7,7 @@ module JMLQC_utils
     using Missings
     using BenchmarkTools
 
-    export get_NCP, airborne_ht, prob_groundgate, calc_avg, calc_std, calc_iso, process_single_file, parse_directory, get_num_tasks
+    export get_NCP, airborne_ht, prob_groundgate, calc_avg, calc_std, calc_iso, process_single_file, parse_directory, get_num_tasks, get_task_params
 
     center_weight::Float64 = 0
 
@@ -52,7 +52,7 @@ module JMLQC_utils
 
     ###Side note - I do realize that Julia will return the last statement of a function automatically, 
     ###but am including the return statement here for increased code clarity 
-    
+
     ##Returns flattened version of NCP 
     function get_NCP(data::NCDataset)
         ###Some ternary operator + short circuit trickery here 
