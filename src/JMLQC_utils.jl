@@ -7,7 +7,7 @@ module JMLQC_utils
     using Missings
     using BenchmarkTools
 
-    export get_NCP, airborne_ht, prob_groundgate, calc_avg, calc_std, calc_iso, process_single_file, parse_directory, get_num_tasks, get_task_params
+    export get_NCP, airborne_ht, prob_groundgate, calc_avg, calc_std, calc_iso, process_single_file, parse_directory, get_num_tasks, get_task_params, remove_validation 
 
     center_weight::Float64 = 0
 
@@ -454,7 +454,7 @@ module JMLQC_utils
     end
 
 
-    function calc_pgg(cfrad)
+    function calc_pgg(cfrad::NCDataset)
 
         num_times = length(cfrad["time"])
         num_ranges = length(cfrad["range"])
@@ -469,7 +469,7 @@ module JMLQC_utils
         return(map((w,x,y,z) -> prob_groundgate(w,x,y,z), elevs, ranges, heights, azimuths))
     end 
 
-    function calc_aht(cfrad)
+    function calc_aht(cfrad::NCDataset)
 
         num_times = length(cfrad["time"])
         num_ranges = length(cfrad["range"])
@@ -481,5 +481,37 @@ module JMLQC_utils
         return(map((x,y,z) -> airborne_ht(Float64(x),Float64(y),Float64(z)), elevs, ranges, heights))
 
     end 
+
+
+    function remove_validation(input_dataset::String; training_output="train_no_validation_set.h5", validation_output = "validation.h5")
+        
+        currset = h5open(input_dataset)
+
+        X = currset["X"][:,:]
+        Y = currset["Y"][:,:] 
+
+        ###Will include every STEP'th feature in the validation dataset 
+        ###A step of 10 will mean that every 10th will feature in the validation set, and everything else in training 
+        STEP = 10 
+
+        test_indexer = [true for i=1:size(X)[1]]
+        test_indexer[begin:STEP:end] .= false
+
+        validation_indexer = .!test_indexer 
+
+        validation_out = h5open(validation_output, "w")
+        training_out = h5open(training_output, "w")
+
+        write_dataset(validation_out, "X", X[validation_indexer, :])
+        write_dataset(validation_out, "Y", Y[validation_indexer, :])
+
+        write_dataset(training_out, "X", X[test_indexer, :])
+        write_dataset(training_out, "Y", Y[test_indexer, :])
+
+        close(currset)
+        close(validation_out)
+        close(training_out)
+
+    end
 
 end
