@@ -5,18 +5,23 @@
 ###This splits the datapoints into a training and testing set, where the testing data 
 ###comprises 20% of the data and the training the other 80%. In order to increase temporal variability
 ###testing scans are selected from the beginning, middle, and end of their respective datasets 
+###One key assumption is that the file naming is CF-compliant, and as such implicitly 
+###chronologically orders the files. 
 
-
+###NOTE: The script will remove the directories specified by TESTING_PATH and TRAINING_PATH
+###In order to ensure that they are clean and do not contain extraneous files. 
 
 TRAINING_FRAC::Float32 = .72
 VALIDATION_FRAC::Float32 = .08
 TESTING_FRAC:: Float32 = 1 - TRAINING_FRAC - VALIDATION_FRAC
 
+###List of paths to each case directory
 DIR_PATHS::Vector{String} = ["/Users/ischluesche/Documents/Grad_School/Research/JMLQC/CFRADIALS/CASES/VORTEX/", 
 "/Users/ischluesche/Documents/Grad_School/Research/JMLQC/CFRADIALS/CASES/BAMEX/",
 "/Users/ischluesche/Documents/Grad_School/Research/JMLQC/CFRADIALS/CASES/RITA/", 
 "/Users/ischluesche/Documents/Grad_School/Research/JMLQC/CFRADIALS/CASES/HAGUPIT/"]
 
+###Paths specifiying where testing and training files will be softlinked to 
 TESTING_PATH::String = "/Users/ischluesche/Documents/Grad_School/Research/JMLQC/CFRADIALS/CASES/TESTING/"
 TRAINING_PATH::String = "/Users/ischluesche/Documents/Grad_School/Research/JMLQC/CFRADIALS/CASES/TRAINING/"
 
@@ -24,11 +29,25 @@ TRAINING_PATH::String = "/Users/ischluesche/Documents/Grad_School/Research/JMLQC
 NUM_CASES::Int64 = length(DIR_PATHS)
 
 ###Clean things
+printstyled("\nWARNING: REMOVING THE FOLLOWING DIRECTORIES:\n $(TESTING_PATH) \n $(TRAINING_PATH)\n OK? (Y/N)\n", color=:red)
+resp = readline()
+
+while (resp ∉ ["Y", "N"])
+    printstyled("OK?  (Y/N)\n", color=:red)
+    global resp = readline()
+end 
+
+if resp == "N"
+    printstyled("\nEXITING.....\n", color=:red)
+    exit() 
+end 
+
 rm(TESTING_PATH, force = true, recursive = true)
 rm(TRAINING_PATH, force = true, recursive = true) 
 
 mkdir(TESTING_PATH)
 mkdir(TRAINING_PATH) 
+
 
 TOTAL_SCANS::Int64 = 0 
 ###Calculate total number of TDR scans 
@@ -55,8 +74,6 @@ TESTING_REMAINDER::Int64          = TESTING_SCANS % NUM_CASES
 
 printstyled("\nTOTAL NUMBER OF TDR SCANS ACROSS ALL CASES: $TOTAL_SCANS\n", color=:green)
 printstyled("TESTING SCANS PER CASE $(NUM_TESTING_SCANS_PER_CASE)\n", color=:orange)
-
-
 
 ###Each sequence of chronological TDR scans will be split as follows
 ###[[T E S T][T   R   A   I   N][T E S T][T   R   A   I   N][T E S T]]
