@@ -7,7 +7,7 @@ A key part of the process is computing necessary derived parameters from the raw
 For applying the algorithm using an existing/trained RF model, see [QC_single_scan.jl](./QC_single_scan.jl) 
   
   <br> 
-  <br> 
+  
 
 ___
 ## Guide: Processing new data, training, and evaluating a new model
@@ -36,16 +36,25 @@ This script also includes the option to verify the model on the training set and
 ___
 ## Guide: Applying algorithm to a set of scans using a trained model 
 ___
-To remove non-meteorological echoes from scan or set of scans, utilize [QC_scan.jl](QC_scan.jl). To properly configure, the `VARIALBES_TO_QC` array must be modified to contain the names of the variables within each scan you wish to apply the random forest to. 
+To remove non-meteorological echoes from scan or set of scans, utilize [QC_scan.jl](QC_scan.jl). To properly configure, the `VARIALBES_TO_QC` array must be modified to contain the names of the variables within each scan you wish to apply the random forest to. <br><br>
+The script contains a couple of options - to process a single scan, call using `-m S` flag. To process a directory, utilize `-m D`. The script will automatically calculate the necessary features for the RF model and remove the resultant predicted non-meteorological echoes from the variables specified in `VARIABLES_TO_QC`. It is important that these variables are the same name as in their respective cfradial files. <br><br>
+Example usage:
+To apply QC to the directory `./scans_to_qc/` using the RF model `trained_RF_model.bson` trained on the features described in `config.txt`, execute
+```
+julia QC_scan.jl ./scans_to_qc trained_RF_model.bson config.txt -m D
+```
+<br>
+
 ___
 ## Notes on data conventions
 _______
 For the verification 'Y' array in the training scripts I have adopted the convention that 1 indicates METEOROLOGICAL DATA, and 0 indicates NON_METEOROLOGICAL DATA 
 
 Furthermore, for QC-ed variables in the output files, the following is adopted:  
-    UNDEF/MISSING: MISSING DATA IN ORIGINAL FILE  
-    0: REMOVED IN MLQC (AFTER BASE THRESHOLDS WERE APPLIED)  
-    VALUE: RETAINED IN MLQC  
+
+UNDEF/MISSING: Missing data in the original file or didn't meet QC thresholds
+FILL_VALUE: Removed during MLQC process
+VALUE: Retained during MLQC process 
 
 Data is written out to NetCDF files to be CF-Compliant in Julia and other column-major languages, such that it has dimensions of (range x time). 
 However, if it were loaded in a row-major language, such as python, it would take on dimensions of (time x range). 

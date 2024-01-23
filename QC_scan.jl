@@ -103,15 +103,15 @@ function main()
             initial_count = count(!iszero, QCED_FIELDS)
             ##Apply predictions from model 
             ##If model predicts 1, this indicates a prediction of meteorological data 
-            QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : missing, enumerate(QCED_FIELDS))
-            final_count = count(!ismissing, QCED_FIELDS)
+            QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : JMLQC_utils.FILL_VAL, enumerate(QCED_FIELDS))
+            final_count = count(QCED_FIELDS .== JMLQC_utils.FILL_VAL)
             
             ###Need to reconstruct original 
             NEW_FIELD = NEW_FIELD[:]
             NEW_FIELD[indexer] = QCED_FIELDS
             NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
 
-            defVar(input_cfrad, var * QC_SUFFIX, NEW_FIELD, ("range", "time"))
+            defVar(input_cfrad, var * QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = JMLQC_utils.FILL_VAL)
 
             println()
             printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
