@@ -7,13 +7,15 @@ using PyCall, PyCallUtils, BSON
 
 
 ###Load the data
-radar_data = h5open("TRAINING_DATA.h5")
+radar_data = h5open("TRAINING_DATA_NO_VALID.h5")
 printstyled("\nOpening $(radar_data)...\n", color=:blue)
 sleep(2)
 ###Split into features
 
 X = read(radar_data["X"])
 Y = read(radar_data["Y"])
+
+println("TRAINING ON $(size(X)[1]) RADAR GATES\n")
 
 ###Determine the class weights 
 MET_LENGTH = length(Y[Y[:] .== 1])
@@ -26,7 +28,7 @@ println()
 
 ###Taken from sklearn documentation 
 ###This is a little bit overkill, but a safer way to do this that is more extendible to greater class problems 
-currmodel = RandomForestClassifier(n_estimators = 21, max_depth = 14, n_jobs = -1, random_state = 50, class_weight = "balanced")
+currmodel = RandomForestClassifier(n_estimators = 21, max_depth = 14, random_state = 50, class_weight = "balanced")
 println(typeof(currmodel))
 println("FITTING MODEL")
 startTime = time() 
@@ -48,6 +50,6 @@ BSON.@save "trained_JMLQC_RF.bson" currmodel
 
 ###NEW: Write out data to HDF5 files for further processing 
 fid = h5open("testing_output.h5", "w")
-HDF5.write_dataset(fid, "Y_PREDICTED", predicted_y)
+HDF5.write_dataset(fid, "Y_PREDICTED", predicted_Y)
 HDF5.write_dataset(fid, "Y_ACTUAL", Y)
 close(fid) 
