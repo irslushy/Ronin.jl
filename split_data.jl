@@ -11,6 +11,7 @@
 ###NOTE: The script will remove the directories specified by TESTING_PATH and TRAINING_PATH
 ###In order to ensure that they are clean and do not contain extraneous files. 
 
+###TODO  - make sure to ignore .tmp_hawkedit files OTHERWISE WON'T WORK AS EXPECTED 
 TRAINING_FRAC::Float32 = .72
 VALIDATION_FRAC::Float32 = .08
 TESTING_FRAC:: Float32 = 1 - TRAINING_FRAC - VALIDATION_FRAC
@@ -131,13 +132,13 @@ for path in DIR_PATHS
     curr_idx = curr_idx + testing_group_size
     printstyled(" TO $(curr_idx) ASSIGNED TESTING", color=:green)
 
-
-    printstyled("\nTotal length of case files: $(num_cases)\n", color=:red)
-    printstyled("Length of testing files: $(count(testing_indexer))\n", color=:blue)
-    printstyled("Length of testing_files: $(count(.!testing_indexer))\n", color=:blue)
-    
+    ###Everyting not in testing will be in training 
     testing_files = contents[testing_indexer]
     training_files = contents[.!testing_indexer] 
+
+    printstyled("\nTotal length of case files: $(num_cases)\n", color=:red)
+    printstyled("Length of testing files: $(length(testing_files)) - $( (length(testing_files) / (num_cases)) ) percent\n" , color=:blue)
+    printstyled("Length of testing_files: $(length(training_files)) - $( (length(training_files) / (num_cases)) ) percent\n", color=:blue)
 
     @assert (length(testing_files) + length(training_files) == num_cases)
     #printstyled("\n SßUM OF TESTING AND TRAINING = $(length(testing_files) + length(training_files))\n",color=:green)

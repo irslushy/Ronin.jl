@@ -5,14 +5,14 @@ using PyCall, PyCallUtils, BSON
 using ArgParse
 using Missings 
 
-include("./utils.jl")
+include("./src/JMLQC_utils.jl")
 using .JMLQC_utils 
 
 using ScikitLearn
 @sk_import ensemble: RandomForestClassifier
 
 ###Change this to apply quality control to different variables in CFRAD
-VARIALBES_TO_QC::Vector{String} = ["ZZ", "VV"]
+VARIALBES_TO_QC::Vector{String} = ["DBZ", "VEL"]
 ###New variable name in netcdf file will be VARNAME * QC_SUFFIX 
 QC_SUFFIX::String = "_FILTERED"
 
@@ -38,6 +38,9 @@ function parse_commandline()
         "--outfile", "-o"
             help = "Location to output mined data to"
             default = "./mined_data.h5"
+        "-i"
+            help = "variable to index off of"
+            default = "VV"
 
         
     end
@@ -55,7 +58,7 @@ function main()
     cfrad_dims = (input_cfrad.dim["range"], input_cfrad.dim["time"])
 
     ###Will generally NOT return Y, but only (X, indexer)
-    X, Y, indexer = JMLQC_utils.process_single_file(input_cfrad, keys(input_cfrad), parsed_args)
+    X, Y, indexer = JMLQC_utils.process_single_file(input_cfrad, parsed_args; REMOVE_HIGH_PGG = true, REMOVE_LOW_NCP = true, remove_variable=parsed_args["i"])
 
     ##Load saved RF model 
     ##assume that default SYMBOL for saved model is savedmodel

@@ -6,10 +6,11 @@ module JMLQC_utils
     using Images
     using Missings
     using BenchmarkTools
-
+    using HDF5 
+    
     export get_NCP, airborne_ht, prob_groundgate, calc_avg, calc_std, calc_iso, process_single_file, parse_directory, get_num_tasks, get_task_params, remove_validation 
 
-    center_weight::Float64 = 0
+    center_weight::Float64 = 1
 
     ###Weight matrixes for calculating spatial parameters 
     iso_weights::Matrix{Union{Missing, Float64}} = allowmissing(ones(7,7))
@@ -151,7 +152,7 @@ module JMLQC_utils
     end 
 
     function process_single_file(cfrad::NCDataset, parsed_args,; 
-        HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false )
+        HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, remove_variable = "VV")
 
         cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
         println("\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
@@ -236,9 +237,9 @@ module JMLQC_utils
         ###by the subsequent random forest model 
 
         ###Begin by simply removing the gates where no velocity is found 
-        println("REMOVING MISSING DATA BASED ON VT...")
+        println("REMOVING MISSING DATA BASED ON $(remove_variable)...")
         starttime = time() 
-        VT = cfrad["VT"][:]
+        VT = cfrad[remove_variable][:]
 
         ###Indexer will be boolean array determining whether or not to
         ###retain a gate for output into the model training/testing set 
@@ -501,7 +502,7 @@ module JMLQC_utils
 
         validation_out = h5open(validation_output, "w")
         training_out = h5open(training_output, "w")
-
+        
         write_dataset(validation_out, "X", X[validation_indexer, :])
         write_dataset(validation_out, "Y", Y[validation_indexer, :])
 
