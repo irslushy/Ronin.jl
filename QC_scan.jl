@@ -35,6 +35,14 @@ function parse_commandline()
                     Currently supported funcs include AVG(var_name), STD(var_name), and ISO(var_name)\n
                     Example file content: DBZ, VEL, AVG(DBZ), AVG(VEL), ISO(DBZ), STD(DBZ)\n")
             required=true 
+        "-m", "--mode"
+            help = "Whether to run in directory mode (D), single-scan mode(S), or 
+                    Listening Mode (L). If directory mode, CFRad_path should be a directory
+                    containing a variety of scans to apply QC to. If single-scan, this should
+                    be a single file. If Listening, path should contain a directory. The script will
+                    run until interrupted, processing new files as they are added to the directory"
+            default="S"
+        
         "--outfile", "-o"
             help = "Location to output mined data to"
             default = "./mined_data.h5"

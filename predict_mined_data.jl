@@ -5,6 +5,8 @@ using ScikitLearn
 using PyCall, PyCallUtils, BSON
 @sk_import ensemble: RandomForestClassifier
 
+###Helper script to apply a trained RF model to a set of mined data parameters 
+
 
 ###Load the data
 radar_data = h5open("./ALL_DATA_PROCESSED.h5")
