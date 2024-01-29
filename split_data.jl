@@ -141,6 +141,7 @@ for path in DIR_PATHS
     printstyled("Length of testing_files: $(length(training_files)) - $( (length(training_files) / (num_cases)) ) percent\n", color=:blue)
 
     @assert (length(testing_files) + length(training_files) == num_cases)
+    
     #printstyled("\n SßUM OF TESTING AND TRAINING = $(length(testing_files) + length(training_files))\n",color=:green)
     for file in training_files
         symlink((path * file), TRAINING_PATH * file)
