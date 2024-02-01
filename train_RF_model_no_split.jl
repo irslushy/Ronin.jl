@@ -57,7 +57,7 @@ println()
 
 ###Taken from sklearn documentation 
 ###This is a little bit overkill, but a safer way to do this that is more extendible to greater class problems 
-#currmodel = RandomForestClassifier(n_estimators = 21, max_depth = 14, random_state = 50, class_weight = "balanced")
+currmodel = RandomForestClassifier(n_estimators = 21, max_depth = 14, random_state = 50, class_weight = "balanced")
 #println(typeof(currmodel))
 println("FITTING MODEL")
 startTime = time() 
