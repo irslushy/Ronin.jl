@@ -390,27 +390,27 @@ function process_single_file(cfrad::NCDataset, argfile_path;
             if (task == "PGG") 
                 startTime = time() 
                 ##Change missing values to FILL_VAL 
-                PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
+                PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
                 X[:, i] = PGG
                 PGG_Completed_Flag = true 
                 calc_length = time() - startTime
                 println("Completed in $calc_length s"...)
             elseif (task == "NCP")
                 startTime = time()
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.get_NCP(cfrad)[:]]
+                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in get_NCP(cfrad)[:]]
                 calc_length = time() - startTime
                 println("Completed in $calc_length s"...)
             elseif (task == "AHT")
                 startTime = time()
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_aht(cfrad)[:]]
+                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_aht(cfrad)[:]]
                 println("Completed in $(time() - startTime) seconds")
             elseif (task == "RNG") 
                 startTime = time() 
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.get_RNG(cfrad)[:]]
+                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in get_RNG(cfrad)[:]]
                 println("Completed in $(time() - startTime) seconds")
             elseif (task == "NRG")
                 startTime = time()
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.get_NRG(cfrad)[:]]
+                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in get_NRG(cfrad)[:]]
                 println("Completed in $(time() - startTime) seconds")
             else
                 startTime = time() 
@@ -444,7 +444,7 @@ function process_single_file(cfrad::NCDataset, argfile_path;
     if (REMOVE_LOW_NCP)
         println("REMOVING BASED ON NCP")
         println("INITIAL COUNT: $(count(INDEXER))")
-        NCP = JMLQC_utils.get_NCP(cfrad)
+        NCP = get_NCP(cfrad)
         ###Only need to modify the portions of the indexer that are currently true
         INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
         println("FINAL COUNT: $(count(INDEXER))")
@@ -458,7 +458,7 @@ function process_single_file(cfrad::NCDataset, argfile_path;
         if (PGG_Completed_Flag)
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
         else
-            PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in JMLQC_utils.calc_pgg(cfrad)[:]]
+            PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
         end
 

@@ -1,6 +1,7 @@
 module RadarQC
 
     include("./RQCFeatures.jl") 
+    include("./Io.jl")
 
     using NCDatasets
     using ImageFiltering
@@ -14,11 +15,91 @@ module RadarQC
     using PyCall, PyCallUtils, BSON
 
     @sk_import ensemble: RandomForestClassifier
+
     export get_NCP, airborne_ht, prob_groundgate
     export calc_avg, calc_std, calc_iso, process_single_file 
     export parse_directory, get_num_tasks, get_task_params, remove_validation 
+    export calculate_features
+    export split_training_testing 
 
     VARIALBES_TO_QC::Vector{String} = ["ZZ", "VV"]
+    QC_SUFFIX::String = "_QC"
+
+
+    """
+    Function to process a set of cfradial files and produce a set of input features for training/evaluating a model 
+        input_loc: cfradial files are specified by input_loc - can be either a file or a directory
+        arg_file: Features to be calculated are specified in a file located at arg_file 
+        output_file : Location to output the resulting dataset
+    """
+    function calculate_features(input_loc::String, argument_file::String, output_file::String)
+
+        ##If this is a directory, things get a little more complicated 
+        paths = Vector{String}()
+    
+        if isdir(input_loc) 
+            paths = parse_directory(input_loc)
+        else 
+            paths = [input_loc]
+        end 
+        
+        ###Setup h5 file for outputting mined parameters
+        ###processing will proceed in order of the tasks, so 
+        ###add these as an attribute akin to column headers in the H5 dataset
+        ###Also specify the fill value used 
+    
+        println("OUTPUTTING DATA IN HDF5 FORMAT TO FILE: $(output_file)")
+        fid = h5open(output_file, "w")
+    
+        ###Add information to output h5 file 
+        #attributes(fid)["Parameters"] = tasks
+        attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
+    
+        ##Instantiate Matrixes to hold calculated features and verification data 
+        output_cols = get_num_tasks(argument_file)
+    
+        newX = X = Matrix{Float64}(undef,0,output_cols)
+        newY = Y = Matrix{Int64}(undef, 0,1) 
+    
+        
+        starttime = time() 
+    
+        for (i, path) in enumerate(paths) 
+            try 
+                cfrad = Dataset(path) 
+                (newX, newY, indexer) = process_single_file(cfrad, argument_file)
+            catch e
+                if isa(e, DimensionMismatch)
+                    printstyled(Base.stderr, "POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)\n"; color=:red)
+                else 
+                    printstyled(Base.stderr, "UNRECOVERABLE ERROR\n"; color=:red)
+                    throw(e)
+    
+                ##@TODO CATCH exception handling for invalid task 
+                end
+            else
+                X = vcat(X, newX)::Matrix{Float64}
+                Y = vcat(Y, newY)::Matrix{Int64}
+            end
+        end 
+    
+        println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 0)) SECONDS")
+    
+        ###Get verification information 
+        ###0 indicates NON METEOROLOGICAL data that was removed during manual QC
+        ###1 indicates METEOROLOGICAL data that was retained during manual QC 
+        
+        ##Probably only want to write once, I/O is very slow 
+        println()
+        println("WRITING DATA TO FILE OF SHAPE $(size(X))")
+        X
+        println("X TYPE: $(typeof(X))")
+        write_dataset(fid, "X", X)
+        write_dataset(fid, "Y", Y)
+        close(fid)
+
+    end 
+
 
     function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5" )
 
@@ -29,6 +110,8 @@ module RadarQC
 
         X = read(radar_data["X"])
         Y = read(radar_data["Y"])
+
+        currmodel= RandomForestClassifier(n_estimators = 21, max_depth = 14, random_state = 50, class_weight = "balanced")
 
         println("FITTING MODEL")
         startTime = time() 
@@ -61,9 +144,13 @@ module RadarQC
 
     ###TODO: Fix arguments etc 
     ###Can have one for a single file and one for a directory 
-    function QC_scan(file_path::String, config_file_path::String, indexer_var="VV")
+    """
+    Primary function to apply a trained RF model to a cfradial scan 
+    """
+    function QC_scan(file_path::String, config_file_path::String, model_path::String; indexer_var="VV")
 
-        paths = Vector{String}(file_path)
+        paths = Vector{String}()
+        push!(paths, file_path)
 
         for path in paths 
             ##Open in append mode so output variables can be written 
@@ -76,7 +163,7 @@ module RadarQC
 
             ##Load saved RF model 
             ##assume that default SYMBOL for saved model is savedmodel
-            trained_model = BSON.load(parsed_args["model_path"], @__MODULE__)[:currmodel]
+            trained_model = BSON.load(model_path, @__MODULE__)[:currmodel]
             predictions = ScikitLearn.predict(trained_model, X)
 
             ##QC each variable in VARIALBES_TO_QC
@@ -90,8 +177,8 @@ module RadarQC
                 initial_count = count(!iszero, QCED_FIELDS)
                 ##Apply predictions from model 
                 ##If model predicts 1, this indicates a prediction of meteorological data 
-                QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : JMLQC_utils.FILL_VAL, enumerate(QCED_FIELDS))
-                final_count = count(QCED_FIELDS .== JMLQC_utils.FILL_VAL)
+                QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : FILL_VAL, enumerate(QCED_FIELDS))
+                final_count = count(QCED_FIELDS .== FILL_VAL)
                 
                 ###Need to reconstruct original 
                 NEW_FIELD = NEW_FIELD[:]
