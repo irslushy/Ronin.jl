@@ -11,19 +11,18 @@ module RadarQC
     using BenchmarkTools
     using HDF5 
     using MLJ
-    using ScikitLearn
-    using PyCall, PyCallUtils, BSON
-
-    @sk_import ensemble: RandomForestClassifier
+    using PythonCall
 
     export get_NCP, airborne_ht, prob_groundgate
     export calc_avg, calc_std, calc_iso, process_single_file 
     export parse_directory, get_num_tasks, get_task_params, remove_validation 
     export calculate_features
     export split_training_testing! 
+    export train_model 
 
     VARIALBES_TO_QC::Vector{String} = ["ZZ", "VV"]
     QC_SUFFIX::String = "_QC"
+
 
 
     """
@@ -67,7 +66,10 @@ module RadarQC
         for (i, path) in enumerate(paths) 
             try 
                 cfrad = Dataset(path) 
+                println("\r\nProcessing $(path)")
+                starttime=time()
                 (newX, newY, indexer) = process_single_file(cfrad, argument_file)
+                println("\r\nFinished in $(time() - starttime) seconds")
             catch e
                 if isa(e, DimensionMismatch)
                     printstyled(Base.stderr, "POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)\n"; color=:red)
@@ -103,6 +105,11 @@ module RadarQC
 
     function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5" )
 
+
+        ###Import necessecary Python modules 
+        joblib = pyimport("joblib")
+        ensemble = pyimport("sklearn.ensemble")
+
         ###Load the data
         radar_data = h5open(input_h5)
         printstyled("\nOpening $(radar_data)...\n", color=:blue)
@@ -111,24 +118,24 @@ module RadarQC
         X = read(radar_data["X"])
         Y = read(radar_data["Y"])
 
-        currmodel= RandomForestClassifier(n_estimators = 21, max_depth = 14, random_state = 50, class_weight = "balanced")
+        model = ensemble.RandomForestClassifier(n_estimators = 21, max_depth = 14, random_state = 50, class_weight = "balanced")
 
         println("FITTING MODEL")
         startTime = time() 
-        ScikitLearn.fit!(currmodel, X, reshape(Y, length(Y),))
+        model.fit(X, reshape(Y, length(Y),))
         println("COMPLETED FITTING MODEL IN $((time() - startTime)) seconds")
         println() 
 
 
         println("MODEL VERIFICATION:")
-        predicted_Y = ScikitLearn.predict(currmodel, X)
+        predicted_Y = pyconvert(Vector{Float64}, model.predict(X))
         accuracy = sum(predicted_Y .== Y) / length(Y)
         println("ACCURACY ON TRAINING SET: $(round(accuracy * 100, sigdigits=3))%")
         println()
 
 
         println("SAVING MODEL: ") 
-        BSON.@save model_location currmodel
+        joblib.dump(model, model_location)
 
         if (verify) 
             ###NEW: Write out data to HDF5 files for further processing 
@@ -159,8 +166,10 @@ module RadarQC
 
             ###Will generally NOT return Y, but only (X, indexer)
             ###Todo: What do I need to do for parsed args here 
+            println("\r\nPROCESSING: $(path)")
+            starttime=time()
             X, Y, indexer = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, REMOVE_LOW_NCP = true, remove_variable=indexer_var)
-
+            println("\r\nCompleted in $(time()-starttime ) seconds")
             ##Load saved RF model 
             ##assume that default SYMBOL for saved model is savedmodel
             trained_model = BSON.load(model_path, @__MODULE__)[:currmodel]

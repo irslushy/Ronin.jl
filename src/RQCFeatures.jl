@@ -346,12 +346,13 @@ function process_single_file(cfrad::NCDataset, argfile_path;
     HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, remove_variable = "VV")
 
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
-    println("\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
+    #println("\r\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
+    
     
     valid_vars = keys(cfrad)
     tasks = get_task_params(argfile_path, valid_vars)
     
-
+    
     ###Features array 
     X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
 
@@ -368,8 +369,8 @@ function process_single_file(cfrad::NCDataset, argfile_path;
             curr_func = lowercase(task[3:5])
             var = match(func_regex, task)[2]
             
-            println("CALCULATING $curr_func OF $var... ")
-            println("TYPE OF VARIABLE: $(typeof(cfrad[var][:,:]))")
+            #println("CALCULATING $curr_func OF $var... ")
+            #println("TYPE OF VARIABLE: $(typeof(cfrad[var][:,:]))")
             curr_func = Symbol(func_prefix * curr_func)
             startTime = time() 
 
@@ -381,11 +382,11 @@ function process_single_file(cfrad::NCDataset, argfile_path;
 
             X[:, i] = filled[:]
             calc_length = time() - startTime
-            println("Completed in $calc_length s"...)
-            println() 
+            #println("Completed in $calc_length s"...)
+            #println() 
             
         else 
-            println("GETTING: $task...")
+            #println("GETTING: $task...")
 
             if (task == "PGG") 
                 startTime = time() 
@@ -394,31 +395,31 @@ function process_single_file(cfrad::NCDataset, argfile_path;
                 X[:, i] = PGG
                 PGG_Completed_Flag = true 
                 calc_length = time() - startTime
-                println("Completed in $calc_length s"...)
+                #println("Completed in $calc_length s"...)
             elseif (task == "NCP")
                 startTime = time()
                 X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in get_NCP(cfrad)[:]]
                 calc_length = time() - startTime
-                println("Completed in $calc_length s"...)
+                #println("Completed in $calc_length s"...)
             elseif (task == "AHT")
                 startTime = time()
                 X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_aht(cfrad)[:]]
-                println("Completed in $(time() - startTime) seconds")
+                #println("Completed in $(time() - startTime) seconds")
             elseif (task == "RNG") 
                 startTime = time() 
                 X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in get_RNG(cfrad)[:]]
-                println("Completed in $(time() - startTime) seconds")
+                #println("Completed in $(time() - startTime) seconds")
             elseif (task == "NRG")
                 startTime = time()
                 X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in get_NRG(cfrad)[:]]
-                println("Completed in $(time() - startTime) seconds")
+                #println("Completed in $(time() - startTime) seconds")
             else
                 startTime = time() 
                 X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
                 calc_length = time() - startTime
-                println("Completed in $calc_length s"...)
+                #println("Completed in $calc_length s"...)
             end 
-            println()
+            #println()
         end 
     end
 
@@ -428,32 +429,32 @@ function process_single_file(cfrad::NCDataset, argfile_path;
     ###by the subsequent random forest model 
 
     ###Begin by simply removing the gates where no velocity is found 
-    println("REMOVING MISSING DATA BASED ON $(remove_variable)...")
+    #println("REMOVING MISSING DATA BASED ON $(remove_variable)...")
     starttime = time() 
     VT = cfrad[remove_variable][:]
 
     ###Indexer will be boolean array determining whether or not to
     ###retain a gate for output into the model training/testing set 
     INDEXER = [ismissing(x) ? false : true for x in VT]
-    println("COMPLETED IN $(round(time()-starttime, sigdigits=4))s")
-    println("") 
+    #println("COMPLETED IN $(round(time()-starttime, sigdigits=4))s")
+    #println("") 
 
-    println("FILTERING")
+    #println("FILTERING")
     starttime=time()
 
     if (REMOVE_LOW_NCP)
-        println("REMOVING BASED ON NCP")
-        println("INITIAL COUNT: $(count(INDEXER))")
+        #println("REMOVING BASED ON NCP")
+        #println("INITIAL COUNT: $(count(INDEXER))")
         NCP = get_NCP(cfrad)
         ###Only need to modify the portions of the indexer that are currently true
         INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
-        println("FINAL COUNT: $(count(INDEXER))")
+        #println("FINAL COUNT: $(count(INDEXER))")
     end
 
     if (REMOVE_HIGH_PGG)
 
-        println("REMOVING BASED ON PGG")
-        println("INITIAL COUNT: $(count(INDEXER))")
+        #println("REMOVING BASED ON PGG")
+        #println("INITIAL COUNT: $(count(INDEXER))")
         
         if (PGG_Completed_Flag)
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
@@ -462,24 +463,24 @@ function process_single_file(cfrad::NCDataset, argfile_path;
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
         end
 
-        println("FINAL COUNT: $(count(INDEXER))")
-        println()
+        #println("FINAL COUNT: $(count(INDEXER))")
+        #println()
     end
     
-    println("COMPLETED IN $(round(time()-starttime, sigdigits=4))s")
+    #println("COMPLETED IN $(round(time()-starttime, sigdigits=4))s")
 
 
-    println("INDEXER SHAPE: $(size(INDEXER))")
-    println("X SHAPE: $(size(X))")
+    #println("INDEXER SHAPE: $(size(INDEXER))")
+    #println("X SHAPE: $(size(X))")
 
     X = X[INDEXER, :] 
-    println("NEW X SHAPE: $(size(X))")
+    #println("NEW X SHAPE: $(size(X))")
     
     ###Allows for use with already QC'ed files to output a Y array for 
     ###model training 
     if HAS_MANUAL_QC
 
-        println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
+        #println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
         startTime = time() 
         ###try catch block here to see if the scan has manual QC
         ###Filter the input arrays first 
@@ -488,18 +489,18 @@ function process_single_file(cfrad::NCDataset, argfile_path;
 
         Y = reshape([ismissing(x) ? 0 : 1 for x in VG .- VV][:], (:, 1))
         calc_length = time() - startTime
-        println("Completed in $calc_length s"...)
-        println()
+        #println("Completed in $calc_length s"...)
+        #println()
 
 
-        println()
-        println("FINAL X SHAPE: $(size(X))")
-        println("FINAL Y SHAPE: $(size(Y))")
+        #println()
+        #println("FINAL X SHAPE: $(size(X))")
+        #println("FINAL Y SHAPE: $(size(Y))")
 
         return(X, Y, INDEXER)
     else
-        println("NO MANUAL QC")
-        println("FINAL X SHAPE: $(size(X))")
+        #println("NO MANUAL QC")
+        #println("FINAL X SHAPE: $(size(X))")
         return(X, false, INDEXER)
     end 
 end 
