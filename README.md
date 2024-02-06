@@ -16,11 +16,18 @@ julia --project=RadarQC
 or modifying the `JULIA_PROJECT` environment variable. <br>
 Then, enter package mode in the REPL by pressing `]`.<br>
 After the REPL changes color to indicate you are in package mode, enter `activate` to activate the RadarQC package environment. 
+<br><br>
+Next, run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the RadarQC package. Now, exit package using ctrl-C. To ensure that everything was installed properly, run `using RadarQC` on the command line. No errors or information should print out if successful. 
+> Guide adaped from https://github.com/mmbell/Scythe.jl/tree/main 
+___
 <br>
-Next, run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the RadarQC package. Now, exit the REPL using ctrl-C.  
+
+## Example notebook 
+<br>
 
 If you're looking to jump right in, check out [RadarQC Example Notebook](./RadarQC_example.ipynb) - it contains everything you need to get up and running.
 <br><br><br>
+
 ___
 ## Guide: Processing new data, training, and evaluating a new model
 ___
@@ -44,7 +51,9 @@ Finally, we can train a model to process our data. To do so, utilize `train_mode
 train_model("training_set.h5", "trained_model.joblib")
 ```
 <b>NOTE: This may take on the order of 20-30 minutes if running on the entire ELDORA set.</b><br><br>
-This script also includes the option to verify the model on the training set and output the results to a separate h5 file. If you wish to do this, execute the same as above, but include the keyword argument `verify=true`<br><br><br>
+This script also includes the option to verify the model on the training set and output the results to a separate h5 file. If you wish to do this, execute the same as above, but include the keyword argument `verify=true`<br><br>
+## Evaluating the model <br>
+Now - let's apply the trained model on a set of data. The useful function here is QC_scan
 ___
 
 ## Notes on data conventions
