@@ -38,7 +38,6 @@ parsed_args = parse_commandline()
 ###Load the data
 radar_data = h5open(parsed_args["training_data"])
 printstyled("\nOpening $(radar_data)...\n", color=:blue)
-sleep(2)
 ###Split into features
 
 X = read(radar_data["X"])
@@ -61,7 +60,7 @@ currmodel = RandomForestClassifier(n_estimators = 21, max_depth = 14, random_sta
 #println(typeof(currmodel))
 println("FITTING MODEL")
 startTime = time() 
-#ScikitLearn.fit!(currmodel, X, reshape(Y, length(Y),))
+ScikitLearn.fit!(currmodel, X, reshape(Y, length(Y),))
 println("COMPLETED FITTING MODEL IN $((time() - startTime)) seconds")
 println() 
 
