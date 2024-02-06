@@ -19,6 +19,7 @@ module RadarQC
     export calculate_features
     export split_training_testing! 
     export train_model 
+    export QC_scan 
 
     """
     Function to process a set of cfradial files and produce a set of input features for training/evaluating a model 
@@ -162,6 +163,8 @@ module RadarQC
     Primary function to apply a trained RF model to a cfradial scan 
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC = ["ZZ", "VV"], QC_suffix = "_QC", indexer_var="VV")
+        
+        joblib = pyimport("joblib") 
 
         paths = Vector{String}() 
         if isdir(file_path) 
@@ -184,8 +187,8 @@ module RadarQC
             println("\r\nCompleted in $(time()-starttime ) seconds")
             ##Load saved RF model 
             ##assume that default SYMBOL for saved model is savedmodel
-            trained_model = BSON.load(model_path, @__MODULE__)[:currmodel]
-            predictions = ScikitLearn.predict(trained_model, X)
+            new_model = joblib.load("final_model_ok.joblib")
+            predictions = pyconvert(Vector{Float64}, new_model.predict(X))
 
             ##QC each variable in VARIALBES_TO_QC
             for var in VARIABLES_TO_QC
@@ -195,6 +198,12 @@ module RadarQC
 
                 ##Only modify relevant data based on indexer, everything else should be fill value 
                 QCED_FIELDS = input_cfrad[var][:][indexer]
+
+                NEW_FIELD_ATTRS = Dict(
+                    "units" => input_cfrad[var].attrib["units"],
+                    "long_name" => "Random Forest Model QC'ed $(var) field"
+                )
+
                 initial_count = count(!iszero, QCED_FIELDS)
                 ##Apply predictions from model 
                 ##If model predicts 1, this indicates a prediction of meteorological data 
@@ -205,9 +214,21 @@ module RadarQC
                 NEW_FIELD = NEW_FIELD[:]
                 NEW_FIELD[indexer] = QCED_FIELDS
                 NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
+                
 
-                defVar(input_cfrad, var * QC_suffix, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL)
+                try 
+                    defVar(input_cfrad, var * QC_suffix, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
+                catch e
+                    ###Simply overwrite the variable 
+                    if e.msg == "NetCDF: String match to name in use"
+                        println("Already exists... overwriting") 
+                        input_cfrad[var*QC_suffix][:,:] = NEW_FIELD 
+                    else 
+                        throw(e)
+                    end 
+                end 
 
+                
                 println()
                 printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
                 println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
