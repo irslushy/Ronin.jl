@@ -20,18 +20,19 @@ module RadarQC
     export split_training_testing! 
     export train_model 
 
-    VARIALBES_TO_QC::Vector{String} = ["ZZ", "VV"]
-    QC_SUFFIX::String = "_QC"
-
-
-
     """
     Function to process a set of cfradial files and produce a set of input features for training/evaluating a model 
         input_loc: cfradial files are specified by input_loc - can be either a file or a directory
-        arg_file: Features to be calculated are specified in a file located at arg_file 
+        argumet_file: Features to be calculated are specified in a file located at arg_file 
         output_file : Location to output the resulting dataset
+
+        Keyword Arguments: 
+        remove_variable - variable in CFRadial file used to determine where 'missing' gates are. 
+                          these gates will be removed from the outputted features so that the model 
+                          is not trained on missing data
     """
-    function calculate_features(input_loc::String, argument_file::String, output_file::String)
+    function calculate_features(input_loc::String, argument_file::String, output_file::String; verbose=false,
+        HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, remove_variable = "VV" )
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -51,7 +52,7 @@ module RadarQC
         fid = h5open(output_file, "w")
     
         ###Add information to output h5 file 
-        #attributes(fid)["Parameters"] = tasks
+        attributes(fid)["Parameters"] = get_task_params(argumetn_file)
         attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
     
         ##Instantiate Matrixes to hold calculated features and verification data 
@@ -66,10 +67,16 @@ module RadarQC
         for (i, path) in enumerate(paths) 
             try 
                 cfrad = Dataset(path) 
-                println("\r\nProcessing $(path)")
-                starttime=time()
-                (newX, newY, indexer) = process_single_file(cfrad, argument_file)
-                println("\r\nFinished in $(time() - starttime) seconds")
+                pathstarttime=time() 
+                (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
+                                            HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                            REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, remove_variable = remove_variable)
+                close(cfrad)
+
+                if verbose
+                    println("Processed $(path) in $(time()-pathstarttime) seconds")
+                end 
+
             catch e
                 if isa(e, DimensionMismatch)
                     printstyled(Base.stderr, "POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)\n"; color=:red)
@@ -140,7 +147,7 @@ module RadarQC
         if (verify) 
             ###NEW: Write out data to HDF5 files for further processing 
             println("WRITING VERIFICATION DATA TO $(verify_out)" )
-            fid = h5open(parsed_args["o"], "w")
+            fid = h5open(verify_out, "w")
             HDF5.write_dataset(fid, "Y_PREDICTED", predicted_Y)
             HDF5.write_dataset(fid, "Y_ACTUAL", Y)
             close(fid) 
@@ -154,10 +161,15 @@ module RadarQC
     """
     Primary function to apply a trained RF model to a cfradial scan 
     """
-    function QC_scan(file_path::String, config_file_path::String, model_path::String; indexer_var="VV")
+    function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC = ["ZZ", "VV"], QC_suffix = "_QC", indexer_var="VV")
 
-        paths = Vector{String}()
-        push!(paths, file_path)
+        paths = Vector{String}() 
+        if isdir(file_path) 
+            paths = parse_directory(file_path)
+        else 
+            paths = [file_path]
+        end 
+        
 
         for path in paths 
             ##Open in append mode so output variables can be written 
@@ -176,7 +188,7 @@ module RadarQC
             predictions = ScikitLearn.predict(trained_model, X)
 
             ##QC each variable in VARIALBES_TO_QC
-            for var in VARIALBES_TO_QC
+            for var in VARIABLES_TO_QC
 
                 ##Create new field to reshape QCed field to 
                 NEW_FIELD = missings(Float64, cfrad_dims) 
@@ -194,7 +206,7 @@ module RadarQC
                 NEW_FIELD[indexer] = QCED_FIELDS
                 NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
 
-                defVar(input_cfrad, var * QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL)
+                defVar(input_cfrad, var * QC_suffix, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL)
 
                 println()
                 printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)

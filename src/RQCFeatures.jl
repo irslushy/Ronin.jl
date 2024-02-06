@@ -322,6 +322,41 @@ function get_task_params(params_file, variablelist; delimiter=",")
     return(task_param_list)
 end 
 
+function get_task_params(params_file)
+
+    task_param_list = String[] 
+    for line in tasks
+        ###Ignore comments in the parameter file 
+        if line[1] == '#'
+            continue
+        else
+            delimited = split(line, delimiter)
+            for token in delimited
+                token = strip(token, ' ')
+                expr_ret = match(func_regex,token)
+                if (typeof(expr_ret) != Nothing)
+                    if (expr_ret[1] ∉ valid_funcs)
+                        println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
+                        "Potentially invalid function or missing variable\n")
+                    else
+                        ###Add λ to the front of the token to indicate it is a function call
+                        ###This helps later when trying to determine what to do with each "task" 
+                        push!(task_param_list, token)
+                    end 
+                else 
+                    ###Otherwise, check to see if this is a valid variable 
+                    if token in variablelist || token ∈ valid_funcs
+                        push!(task_param_list, token)
+                    else
+                        printstyled("\"$token\" NOT FOUND IN CFRAD FILE.... POTENTIAL ERROR IN CONFIG FILE\n", color=:red)
+                    end
+                end 
+            end 
+        end 
+    end 
+    return task_param_list 
+end 
+
 """
     Driver function that calculates a set of features from a single CFRadial file. Features are 
     specified in file located at argfile_path. If the file has already been manually QCed, set
@@ -374,7 +409,7 @@ function process_single_file(cfrad::NCDataset, argfile_path;
             curr_func = Symbol(func_prefix * curr_func)
             startTime = time() 
 
-            @time raw = @eval $curr_func($cfrad[$var][:,:])[:]
+            raw = @eval $curr_func($cfrad[$var][:,:])[:]
             filled = Vector{Float64}
             filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
 
