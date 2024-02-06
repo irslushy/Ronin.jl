@@ -11,28 +11,29 @@ module RadarQC
     using BenchmarkTools
     using HDF5 
     using MLJ
-    using ScikitLearn
-    using PyCall, PyCallUtils, BSON
-
-    @sk_import ensemble: RandomForestClassifier
+    using PythonCall
 
     export get_NCP, airborne_ht, prob_groundgate
     export calc_avg, calc_std, calc_iso, process_single_file 
     export parse_directory, get_num_tasks, get_task_params, remove_validation 
     export calculate_features
     export split_training_testing! 
-
-    VARIALBES_TO_QC::Vector{String} = ["ZZ", "VV"]
-    QC_SUFFIX::String = "_QC"
-
+    export train_model 
+    export QC_scan 
 
     """
     Function to process a set of cfradial files and produce a set of input features for training/evaluating a model 
         input_loc: cfradial files are specified by input_loc - can be either a file or a directory
-        arg_file: Features to be calculated are specified in a file located at arg_file 
+        argumet_file: Features to be calculated are specified in a file located at arg_file 
         output_file : Location to output the resulting dataset
+
+        Keyword Arguments: 
+        remove_variable - variable in CFRadial file used to determine where 'missing' gates are. 
+                          these gates will be removed from the outputted features so that the model 
+                          is not trained on missing data
     """
-    function calculate_features(input_loc::String, argument_file::String, output_file::String)
+    function calculate_features(input_loc::String, argument_file::String, output_file::String; verbose=false,
+        HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, remove_variable = "VV" )
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -52,7 +53,7 @@ module RadarQC
         fid = h5open(output_file, "w")
     
         ###Add information to output h5 file 
-        #attributes(fid)["Parameters"] = tasks
+        attributes(fid)["Parameters"] = get_task_params(argumetn_file)
         attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
     
         ##Instantiate Matrixes to hold calculated features and verification data 
@@ -67,7 +68,16 @@ module RadarQC
         for (i, path) in enumerate(paths) 
             try 
                 cfrad = Dataset(path) 
-                (newX, newY, indexer) = process_single_file(cfrad, argument_file)
+                pathstarttime=time() 
+                (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
+                                            HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                            REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, remove_variable = remove_variable)
+                close(cfrad)
+
+                if verbose
+                    println("Processed $(path) in $(time()-pathstarttime) seconds")
+                end 
+
             catch e
                 if isa(e, DimensionMismatch)
                     printstyled(Base.stderr, "POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)\n"; color=:red)
@@ -103,6 +113,11 @@ module RadarQC
 
     function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5" )
 
+
+        ###Import necessecary Python modules 
+        joblib = pyimport("joblib")
+        ensemble = pyimport("sklearn.ensemble")
+
         ###Load the data
         radar_data = h5open(input_h5)
         printstyled("\nOpening $(radar_data)...\n", color=:blue)
@@ -111,29 +126,29 @@ module RadarQC
         X = read(radar_data["X"])
         Y = read(radar_data["Y"])
 
-        currmodel= RandomForestClassifier(n_estimators = 21, max_depth = 14, random_state = 50, class_weight = "balanced")
+        model = ensemble.RandomForestClassifier(n_estimators = 21, max_depth = 14, random_state = 50, class_weight = "balanced")
 
         println("FITTING MODEL")
         startTime = time() 
-        ScikitLearn.fit!(currmodel, X, reshape(Y, length(Y),))
+        model.fit(X, reshape(Y, length(Y),))
         println("COMPLETED FITTING MODEL IN $((time() - startTime)) seconds")
         println() 
 
 
         println("MODEL VERIFICATION:")
-        predicted_Y = ScikitLearn.predict(currmodel, X)
+        predicted_Y = pyconvert(Vector{Float64}, model.predict(X))
         accuracy = sum(predicted_Y .== Y) / length(Y)
         println("ACCURACY ON TRAINING SET: $(round(accuracy * 100, sigdigits=3))%")
         println()
 
 
         println("SAVING MODEL: ") 
-        BSON.@save model_location currmodel
+        joblib.dump(model, model_location)
 
         if (verify) 
             ###NEW: Write out data to HDF5 files for further processing 
             println("WRITING VERIFICATION DATA TO $(verify_out)" )
-            fid = h5open(parsed_args["o"], "w")
+            fid = h5open(verify_out, "w")
             HDF5.write_dataset(fid, "Y_PREDICTED", predicted_Y)
             HDF5.write_dataset(fid, "Y_ACTUAL", Y)
             close(fid) 
@@ -147,10 +162,17 @@ module RadarQC
     """
     Primary function to apply a trained RF model to a cfradial scan 
     """
-    function QC_scan(file_path::String, config_file_path::String, model_path::String; indexer_var="VV")
+    function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC = ["ZZ", "VV"], QC_suffix = "_QC", indexer_var="VV")
+        
+        joblib = pyimport("joblib") 
 
-        paths = Vector{String}()
-        push!(paths, file_path)
+        paths = Vector{String}() 
+        if isdir(file_path) 
+            paths = parse_directory(file_path)
+        else 
+            paths = [file_path]
+        end 
+        
 
         for path in paths 
             ##Open in append mode so output variables can be written 
@@ -159,21 +181,29 @@ module RadarQC
 
             ###Will generally NOT return Y, but only (X, indexer)
             ###Todo: What do I need to do for parsed args here 
+            println("\r\nPROCESSING: $(path)")
+            starttime=time()
             X, Y, indexer = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, REMOVE_LOW_NCP = true, remove_variable=indexer_var)
-
+            println("\r\nCompleted in $(time()-starttime ) seconds")
             ##Load saved RF model 
             ##assume that default SYMBOL for saved model is savedmodel
-            trained_model = BSON.load(model_path, @__MODULE__)[:currmodel]
-            predictions = ScikitLearn.predict(trained_model, X)
+            new_model = joblib.load("final_model_ok.joblib")
+            predictions = pyconvert(Vector{Float64}, new_model.predict(X))
 
             ##QC each variable in VARIALBES_TO_QC
-            for var in VARIALBES_TO_QC
+            for var in VARIABLES_TO_QC
 
                 ##Create new field to reshape QCed field to 
                 NEW_FIELD = missings(Float64, cfrad_dims) 
 
                 ##Only modify relevant data based on indexer, everything else should be fill value 
                 QCED_FIELDS = input_cfrad[var][:][indexer]
+
+                NEW_FIELD_ATTRS = Dict(
+                    "units" => input_cfrad[var].attrib["units"],
+                    "long_name" => "Random Forest Model QC'ed $(var) field"
+                )
+
                 initial_count = count(!iszero, QCED_FIELDS)
                 ##Apply predictions from model 
                 ##If model predicts 1, this indicates a prediction of meteorological data 
@@ -184,9 +214,21 @@ module RadarQC
                 NEW_FIELD = NEW_FIELD[:]
                 NEW_FIELD[indexer] = QCED_FIELDS
                 NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
+                
 
-                defVar(input_cfrad, var * QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL)
+                try 
+                    defVar(input_cfrad, var * QC_suffix, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
+                catch e
+                    ###Simply overwrite the variable 
+                    if e.msg == "NetCDF: String match to name in use"
+                        println("Already exists... overwriting") 
+                        input_cfrad[var*QC_suffix][:,:] = NEW_FIELD 
+                    else 
+                        throw(e)
+                    end 
+                end 
 
+                
                 println()
                 printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
                 println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
