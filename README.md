@@ -8,14 +8,25 @@ A key part of the process is computing necessary derived parameters from the raw
   
 ___
 # Getting Started:
-If you're looking to jump right in, check out [RadarQC Example Notebook](./RadarQC_example.ipynb) - it contains everything you need to get up and running
+## Setting up the environment 
+After cloning the repository, start Julia using RadarQC as the project directory, either by calling 
+```
+julia --project=RadarQC
+``` 
+or modifying the `JULIA_PROJECT` environment variable. <br>
+Then, enter package mode in the REPL by pressing `]`.<br>
+After the REPL changes color to indicate you are in package mode, enter `activate` to activate the RadarQC package environment. 
+<br>
+Next, run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the RadarQC package. Now, exit the REPL using ctrl-C.  
+
+If you're looking to jump right in, check out [RadarQC Example Notebook](./RadarQC_example.ipynb) - it contains everything you need to get up and running.
 <br><br><br>
 ___
 ## Guide: Processing new data, training, and evaluating a new model
 ___
   <br>
   
-The first step in training a new random forest model is determining which portions of the data will be used for training, testing, and validation. A helpful function here is `split_training_testing!` - this can be used to automatically split a collection of scans into a training directory and a testing directory. In order for the script to be configured properly, the variables relating to the different paths at the top of the file must be modified by the user. 
+The first step in training a new random forest model is determining which portions of the data will be used for training, testing, and validation. A helpful function here is `split_training_testing!` - this can be used to automatically split a collection of scans into a training directory and a testing directory. In order for the script to be configured properly, the variables relating to the different paths must be modified by the user - this is shown in the example notebook. 
 <br> <br>The current configuration is consistent with the 80/20 training/testing split described in the manuscript, as well as to have an equal number of scans from each "case" represented in the testing set. It is expected that the script would work for different training/testing splits, but this has not yet been tested. <br><br>
 
 Once the training and testing scans have been placed into separate directories, data processing may begin. `calculate_features` will be the primary function utilized here. The script processes a directory (or single scan) of scans, and outputs the calculated features into an .h5 file, with the desired features specified by the user in a text file. <br><br>
@@ -28,9 +39,9 @@ If you wish to remove a validation set from the training dataset, utilize `remov
 <br><br>
 
 
-Finally, we can train a model to process our data. To do so, utilize `train_model`. If training data is contained within `training_set.h5`, and you wish to name your trained model `trained_model.bson`, invoke as follows. 
+Finally, we can train a model to process our data. To do so, utilize `train_model`. If training data is contained within `training_set.h5`, and you wish to name your trained model `trained_model.joblib`, invoke as follows. It's recommended to end the model name in `.joblib` as this is the method used to serialzied it to disk. 
 ```
-train_model("training_set.h5", "trained_model.bson")
+train_model("training_set.h5", "trained_model.joblib")
 ```
 <b>NOTE: This may take on the order of 20-30 minutes if running on the entire ELDORA set.</b><br><br>
 This script also includes the option to verify the model on the training set and output the results to a separate h5 file. If you wish to do this, execute the same as above, but include the keyword argument `verify=true`<br><br><br>
