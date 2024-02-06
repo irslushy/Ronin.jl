@@ -53,7 +53,9 @@ train_model("training_set.h5", "trained_model.joblib")
 <b>NOTE: This may take on the order of 20-30 minutes if running on the entire ELDORA set.</b><br><br>
 This script also includes the option to verify the model on the training set and output the results to a separate h5 file. If you wish to do this, execute the same as above, but include the keyword argument `verify=true`<br><br>
 ## Evaluating the model <br>
-Now - let's apply the trained model on a set of data. The useful function here is QC_scan
+Now - let's apply the trained model on a set of data. The useful function here is `QC_scan`.  In order, pass it arguments of the input location, the configuration file, and the path to the trained model. For this reason, it's important to <b>keep the configuration file used to calculate input features in a known location</b>. 
+
+The function will calculate the necessary input features, apply the Random Forest model, and apply the resulting prediction the fields specified by keyword argument `VARIABLES_TO_QC`. These new variables will then be written back out into the specified netcdf file under the field name concatenated with keyword argument `QC_suffix`. If this name is already in use in the NetCDF, it will be overwritten. 
 ___
 
 ## Notes on data conventions
