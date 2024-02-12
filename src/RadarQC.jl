@@ -53,7 +53,7 @@ module RadarQC
         fid = h5open(output_file, "w")
     
         ###Add information to output h5 file 
-        attributes(fid)["Parameters"] = get_task_params(argumetn_file)
+        attributes(fid)["Parameters"] = get_task_params(argument_file)
         attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
     
         ##Instantiate Matrixes to hold calculated features and verification data 

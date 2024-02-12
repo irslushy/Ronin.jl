@@ -322,9 +322,16 @@ function get_task_params(params_file, variablelist; delimiter=",")
     return(task_param_list)
 end 
 
-function get_task_params(params_file)
+"""
+Parses input parameter file for use in outputting feature names to 
+    HDF5 file as attributes. NOTE: Cfradial-unaware. If one of the variables is 
+    specified incorrectly in the parameter file, will cause errors
+"""
+function get_task_params(params_file; delimiter = ',')
 
+    tasks = readlines(params_file)
     task_param_list = String[] 
+
     for line in tasks
         ###Ignore comments in the parameter file 
         if line[1] == '#'
@@ -344,12 +351,7 @@ function get_task_params(params_file)
                         push!(task_param_list, token)
                     end 
                 else 
-                    ###Otherwise, check to see if this is a valid variable 
-                    if token in variablelist || token ∈ valid_funcs
-                        push!(task_param_list, token)
-                    else
-                        printstyled("\"$token\" NOT FOUND IN CFRAD FILE.... POTENTIAL ERROR IN CONFIG FILE\n", color=:red)
-                    end
+                    push!(task_param_list, token)
                 end 
             end 
         end 
