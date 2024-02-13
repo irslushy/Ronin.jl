@@ -188,7 +188,7 @@ module RadarQC
             println("\r\nCompleted in $(time()-starttime ) seconds")
             ##Load saved RF model 
             ##assume that default SYMBOL for saved model is savedmodel
-            new_model = joblib.load("final_model_ok.joblib")
+            new_model = joblib.load(model_path)
             predictions = pyconvert(Vector{Float64}, new_model.predict(X))
 
             ##QC each variable in VARIALBES_TO_QC
