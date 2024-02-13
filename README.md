@@ -64,8 +64,7 @@ For the verification 'Y' array in the training scripts I have adopted the conven
 
 Furthermore, for QC-ed variables in the output files, the following is adopted:  
 
-UNDEF/MISSING: Missing data in the original file or didn't meet QC thresholds
-FILL_VALUE: Removed during MLQC process
+FILL_VALUE: Removed during MLQC process or didn't meet QC thresholds 
 VALUE: Retained during MLQC process 
 
 Data is written out to NetCDF files to be CF-Compliant in Julia and other column-major languages, such that it has dimensions of (range x time). 
