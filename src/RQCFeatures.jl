@@ -361,9 +361,15 @@ end
 
 """
     Driver function that calculates a set of features from a single CFRadial file. Features are 
-    specified in file located at argfile_path. If the file has already been manually QCed, set
+    specified in file located at argfile_path. 
+    
+    If the file has already been manually QCed, set
     HAS_MANUAL_QC to true, and an additional Y array will be returned containing "1" if a datapoint
-    was retained in manual QC and "0" if it was removed. Also included are flags to remove datapoints 
+    was retained in manual QC and "0" if it was removed. 
+    NOTE ARGUMENTS remove_variable and QC_variable . The gates retained after manual QC will be obtained 
+    by determining which are present in remove_variable but are NOT PRESENT in QC_variable 
+        
+    Also included are flags to remove datapoints 
     with low Normalized Coherent Power (NCP) and high Probability of Ground (PGG). Finally, the 
     remove_variable argument specifies which field will be used to determine where "missing" data exists 
     and will subsequently be removed from the returned dataset. 
@@ -380,7 +386,7 @@ end
                   where in the scan features valid data and where does not. 
 """
 function process_single_file(cfrad::NCDataset, argfile_path; 
-    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, remove_variable = "VV")
+    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV")
 
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
     #println("\r\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
@@ -521,8 +527,8 @@ function process_single_file(cfrad::NCDataset, argfile_path;
         startTime = time() 
         ###try catch block here to see if the scan has manual QC
         ###Filter the input arrays first 
-        VG = cfrad["VG"][:][INDEXER]
-        VV = cfrad["VV"][:][INDEXER]
+        VG = cfrad[QC_variable][:][INDEXER]
+        VV = cfrad[remove_variable][:][INDEXER]
 
         Y = reshape([ismissing(x) ? 0 : 1 for x in VG .- VV][:], (:, 1))
         calc_length = time() - startTime

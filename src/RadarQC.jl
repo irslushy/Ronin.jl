@@ -33,7 +33,7 @@ module RadarQC
                           is not trained on missing data
     """
     function calculate_features(input_loc::String, argument_file::String, output_file::String; verbose=false,
-        HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, remove_variable = "VV" )
+        HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV")
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -71,7 +71,7 @@ module RadarQC
                 pathstarttime=time() 
                 (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
                                             HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
-                                            REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, remove_variable = remove_variable)
+                                            REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable)
                 close(cfrad)
 
                 if verbose
@@ -83,6 +83,7 @@ module RadarQC
                     printstyled(Base.stderr, "POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)\n"; color=:red)
                 else 
                     printstyled(Base.stderr, "UNRECOVERABLE ERROR\n"; color=:red)
+                    close(fid)
                     throw(e)
     
                 ##@TODO CATCH exception handling for invalid task 
@@ -93,7 +94,7 @@ module RadarQC
             end
         end 
     
-        println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 0)) SECONDS")
+        println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 2)) SECONDS")
     
         ###Get verification information 
         ###0 indicates NON METEOROLOGICAL data that was removed during manual QC
@@ -204,11 +205,13 @@ module RadarQC
                     "long_name" => "Random Forest Model QC'ed $(var) field"
                 )
 
-                initial_count = count(!iszero, QCED_FIELDS)
+                ##Set MISSINGS to fill value in current field
+                QCED_FIELDS[[ismissing(x) for x in QCED_FIELDS]] .= FILL_VAL  
+                initial_count = count(QCED_FIELDS .!== FILL_VAL )
                 ##Apply predictions from model 
                 ##If model predicts 1, this indicates a prediction of meteorological data 
                 QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : FILL_VAL, enumerate(QCED_FIELDS))
-                final_count = count(QCED_FIELDS .== FILL_VAL)
+                final_count = count(QCED_FIELDS .!== FILL_VAL)
                 
                 ###Need to reconstruct original 
                 NEW_FIELD = NEW_FIELD[:]
