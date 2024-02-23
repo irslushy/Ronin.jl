@@ -29,8 +29,8 @@ func_prefix::String= "calc_"
 func_regex::Regex = r"(\w{1,})\((\w{1,})\)"
 
 ###List of functions currently implemented in the module
-valid_funcs::Array{String} = ["AVG", "ISO", "STD", "AHT", "PGG", "RNG", "NRG"] 
-
+valid_funcs::Array{String} = ["AVG", "ISO", "STD"]
+valid_derived_params::Array{String} = ["AHT", "PGG", "RNG", "NRG"]
 FILL_VAL::Float64 = -32000.
 RADAR_FILE_PREFIX::String = "cfrad"
 
@@ -46,18 +46,18 @@ REMOVE_HIGH_PGG::Bool = true
 ###but am including the return statement here for increased code clarity 
 
 ##Returns flattened version of NCP 
-function get_NCP(data::NCDataset)
+function calc_ncp(data::NCDataset)
     ###Some ternary operator + short circuit trickery here 
     (("NCP" in keys(data)) ? (return(data["NCP"][:]))
                         : ("SQI" in keys(data) ||  error("Could Not Find NCP in dataset")))
     return(data["SQI"][:])
 end
 
-function get_RNG(data::NCDataset)
+function calc_rng(data::NCDataset)
     return(repeat(data["range"][:], 1, length(data["time"])))
 end 
 
-function get_NRG(data::NCDataset)
+function calc_nrg(data::NCDataset)
     rngs = get_RNG(data)
     alts = repeat(transpose(data["altitude"][:]), length(data["range"]), 1)
     return(rngs ./ alts)
@@ -401,68 +401,66 @@ function process_single_file(cfrad::NCDataset, argfile_path;
 
     ###Array to hold PGG for indexing  
     PGG = Matrix{Float64}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
+
     PGG_Completed_Flag = false 
+    NCP_Completed_Flag = false 
 
     for (i, task) in enumerate(tasks)
 
-        ###λ identifier indicates that the requested task is a function 
-        if (task[1] == 'λ')
-            
-            ###Need to use capturing groups again here
-            curr_func = lowercase(task[3:5])
-            var = match(func_regex, task)[2]
-            
-            #println("CALCULATING $curr_func OF $var... ")
-            #println("TYPE OF VARIABLE: $(typeof(cfrad[var][:,:]))")
-            curr_func = Symbol(func_prefix * curr_func)
+        ###Test to see if task involves a spatial parameter function call) 
+        ###A match implies spatial parameter, otherwise we assume it is just 
+        ###simple derived parameter.
+
+        ###Spatial parameters have general structure of calc_prm(cfrad_field)
+        ###Where PRM is the 3 letter abbreviation of the spatial paramter (AVG, STD, etc.)
+        ###and the cfrad_field is the variable we are performing this on 
+
+        ###Non-spatial parameters have general structure of calc_prm(cfrad)
+        ###Where PRM is the 3 lettter abbreviation of the parameter
+        ###and the full cfradial is passed because oftentimes multiple fields are requried 
+        regex_match = match(func_regex, task) 
+        
+        if (!isnothing(regex_match))
+
             startTime = time() 
 
-            raw = @eval $curr_func($cfrad[$var][:,:])[:]
-            filled = Vector{Float64}
-            filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            func = Symbol(func_prefix * lowercase(match[1]))
+            var = regex_match[2]
 
+            raw = @eval $func($cfrad[$var][:,:])[:]
+            filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            
             any(isnan, filled) ? throw("NAN ERROR") : 
 
             X[:, i] = filled[:]
             calc_length = time() - startTime
-            #println("Completed in $calc_length s"...)
-            #println() 
-            
-        else 
-            #println("GETTING: $task...")
 
-            if (task == "PGG") 
-                startTime = time() 
-                ##Change missing values to FILL_VAL 
-                PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
-                X[:, i] = PGG
-                PGG_Completed_Flag = true 
-                calc_length = time() - startTime
-                #println("Completed in $calc_length s"...)
-            elseif (task == "NCP")
-                startTime = time()
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in get_NCP(cfrad)[:]]
-                calc_length = time() - startTime
-                #println("Completed in $calc_length s"...)
-            elseif (task == "AHT")
-                startTime = time()
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_aht(cfrad)[:]]
-                #println("Completed in $(time() - startTime) seconds")
-            elseif (task == "RNG") 
-                startTime = time() 
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in get_RNG(cfrad)[:]]
-                #println("Completed in $(time() - startTime) seconds")
-            elseif (task == "NRG")
-                startTime = time()
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in get_NRG(cfrad)[:]]
-                #println("Completed in $(time() - startTime) seconds")
-            else
-                startTime = time() 
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
-                calc_length = time() - startTime
-                #println("Completed in $calc_length s"...)
+
+        else if (task in valid_derived_params)
+
+            startTime = time() 
+
+            func = Symbol(func_prefix * lowercase(task))
+            raw = @eval $func($cfrad)[:]
+            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+
+            if (task == "PGG")
+                PGG_Completed_Flag = true
+                PGG = X[:, i]
             end 
-            #println()
+
+            if (task == "NCP") 
+                NCP_Completed_Flag = true 
+                NCP = X[:, i]
+            end 
+
+            calc_length = time() - startTime 
+        
+        ###Otherwise it's just a variable from the cfrad 
+        else 
+            startTime = time() 
+            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
+            calc_length = time() - startTime
         end 
     end
 
@@ -486,18 +484,15 @@ function process_single_file(cfrad::NCDataset, argfile_path;
     starttime=time()
 
     if (REMOVE_LOW_NCP)
-        #println("REMOVING BASED ON NCP")
-        #println("INITIAL COUNT: $(count(INDEXER))")
-        NCP = get_NCP(cfrad)
-        ###Only need to modify the portions of the indexer that are currently true
-        INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
-        #println("FINAL COUNT: $(count(INDEXER))")
+        if (NCP_Completed_Flag) 
+            INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
+        else 
+            NCP = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_ncp(cfrad)[:]]
+            INDEXER[INDEXER] = [ x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
+        end 
     end
 
     if (REMOVE_HIGH_PGG)
-
-        #println("REMOVING BASED ON PGG")
-        #println("INITIAL COUNT: $(count(INDEXER))")
         
         if (PGG_Completed_Flag)
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
@@ -505,9 +500,7 @@ function process_single_file(cfrad::NCDataset, argfile_path;
             PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
         end
-
-        #println("FINAL COUNT: $(count(INDEXER))")
-        #println()
+        
     end
     
     #println("COMPLETED IN $(round(time()-starttime, sigdigits=4))s")
