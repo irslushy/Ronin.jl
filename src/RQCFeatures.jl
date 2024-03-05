@@ -431,7 +431,7 @@ function process_single_file(cfrad::NCDataset, argfile_path;
 
             startTime = time() 
 
-            func = Symbol(func_prefix * lowercase(match[1]))
+            func = Symbol(func_prefix * lowercase(regex_match[1]))
             var = regex_match[2]
 
             raw = @eval $func($cfrad[$var][:,:])[:]
@@ -568,12 +568,12 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
 
             startTime = time() 
 
-            func = Symbol(func_prefix * lowercase(match[1]))
+            func = Symbol(func_prefix * lowercase(regex_match[1]))
             var = regex_match[2]
 
             weight_matrix = weight_matrixes[i]
             window_size = size(weight_matrix)
-            raw = @eval $func($cfrad[$var][:,:]; weights = weight_matrix, window = window_size)[:]
+            raw = @eval $func($cfrad[$var][:,:]; weights = $weight_matrix, window = $window_size)[:]
             filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
             
             any(isnan, filled) ? throw("NAN ERROR") : 
