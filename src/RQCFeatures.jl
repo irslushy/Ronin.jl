@@ -533,7 +533,7 @@ end
 ###Multiple dispatch version of process_single_file that allows user to specify a vector of weight matrixes 
 ###In this case will also pass the tasks to complete as a vector 
 ###weight_matrixes are also implicitly the window size 
-function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Float64}}; 
+function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}; 
     HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV")
 
     
