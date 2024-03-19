@@ -331,6 +331,8 @@ module RadarQC
                 printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
                 println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
 
+                close(input_cfrad)
+
             end 
         end 
     end 
