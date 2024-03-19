@@ -29,8 +29,8 @@ func_prefix::String= "calc_"
 func_regex::Regex = r"(\w{1,})\((\w{1,})\)"
 
 ###List of functions currently implemented in the module
-valid_funcs::Array{String} = ["AVG", "ISO", "STD", "AHT", "PGG", "RNG", "NRG"] 
-
+valid_funcs::Array{String} = ["AVG", "ISO", "STD"]
+valid_derived_params::Array{String} = ["AHT", "PGG", "RNG", "NRG"]
 FILL_VAL::Float64 = -32000.
 RADAR_FILE_PREFIX::String = "cfrad"
 
@@ -46,18 +46,18 @@ REMOVE_HIGH_PGG::Bool = true
 ###but am including the return statement here for increased code clarity 
 
 ##Returns flattened version of NCP 
-function get_NCP(data::NCDataset)
+function calc_ncp(data::NCDataset)
     ###Some ternary operator + short circuit trickery here 
     (("NCP" in keys(data)) ? (return(data["NCP"][:]))
                         : ("SQI" in keys(data) ||  error("Could Not Find NCP in dataset")))
     return(data["SQI"][:])
 end
 
-function get_RNG(data::NCDataset)
+function calc_rng(data::NCDataset)
     return(repeat(data["range"][:], 1, length(data["time"])))
 end 
 
-function get_NRG(data::NCDataset)
+function calc_nrg(data::NCDataset)
     rngs = get_RNG(data)
     alts = repeat(transpose(data["altitude"][:]), length(data["range"]), 1)
     return(rngs ./ alts)
@@ -300,17 +300,18 @@ function get_task_params(params_file, variablelist; delimiter=",")
                 expr_ret = match(func_regex,token)
                 ###If it is, make sure that it is both a valid function and a valid variable 
                 if (typeof(expr_ret) != Nothing)
-                    if (expr_ret[1] ∉ valid_funcs || expr_ret[2] ∉ variablelist)
+                    if (expr_ret[1] ∉ valid_funcs || 
+                        (expr_ret[2] ∉ variablelist && expr_ret[2] ∉ valid_derived_params))
                         println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
                         "Potentially invalid function or missing variable\n")
                     else
                         ###Add λ to the front of the token to indicate it is a function call
                         ###This helps later when trying to determine what to do with each "task" 
-                        push!(task_param_list, "λ" * token)
+                        push!(task_param_list, token)
                     end 
                 else
                     ###Otherwise, check to see if this is a valid variable 
-                    if token in variablelist || token ∈ valid_funcs
+                    if token in variablelist || token ∈ valid_funcs || token ∈ valid_derived_params
                         push!(task_param_list, token)
                     else
                         printstyled("\"$token\" NOT FOUND IN CFRAD FILE.... POTENTIAL ERROR IN CONFIG FILE\n", color=:red)
@@ -322,11 +323,13 @@ function get_task_params(params_file, variablelist; delimiter=",")
     return(task_param_list)
 end 
 
+
 """
 Parses input parameter file for use in outputting feature names to 
     HDF5 file as attributes. NOTE: Cfradial-unaware. If one of the variables is 
     specified incorrectly in the parameter file, will cause errors
 """
+
 function get_task_params(params_file; delimiter = ',')
 
     tasks = readlines(params_file)
@@ -341,6 +344,7 @@ function get_task_params(params_file; delimiter = ',')
             for token in delimited
                 token = strip(token, ' ')
                 expr_ret = match(func_regex,token)
+
                 if (typeof(expr_ret) != Nothing)
                     if (expr_ret[1] ∉ valid_funcs)
                         println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
@@ -362,6 +366,8 @@ end
 """
     Driver function that calculates a set of features from a single CFRadial file. Features are 
     specified in file located at argfile_path. 
+
+    IMPLICITLY specifies weight matrixes (already in calc function args) 
     
     If the file has already been manually QCed, set
     HAS_MANUAL_QC to true, and an additional Y array will be returned containing "1" if a datapoint
@@ -384,9 +390,10 @@ end
 
         -INDEXER: Based on remove_variable as described above, contains boolean array specifiying
                   where in the scan features valid data and where does not. 
+
 """
 function process_single_file(cfrad::NCDataset, argfile_path; 
-    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV")
+    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV",)
 
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
     #println("\r\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
@@ -401,68 +408,66 @@ function process_single_file(cfrad::NCDataset, argfile_path;
 
     ###Array to hold PGG for indexing  
     PGG = Matrix{Float64}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
+
     PGG_Completed_Flag = false 
+    NCP_Completed_Flag = false 
 
     for (i, task) in enumerate(tasks)
 
-        ###λ identifier indicates that the requested task is a function 
-        if (task[1] == 'λ')
-            
-            ###Need to use capturing groups again here
-            curr_func = lowercase(task[3:5])
-            var = match(func_regex, task)[2]
-            
-            #println("CALCULATING $curr_func OF $var... ")
-            #println("TYPE OF VARIABLE: $(typeof(cfrad[var][:,:]))")
-            curr_func = Symbol(func_prefix * curr_func)
+        ###Test to see if task involves a spatial parameter function call) 
+        ###A match implies spatial parameter, otherwise we assume it is just 
+        ###simple derived parameter.
+
+        ###Spatial parameters have general structure of calc_prm(cfrad_field)
+        ###Where PRM is the 3 letter abbreviation of the spatial paramter (AVG, STD, etc.)
+        ###and the cfrad_field is the variable we are performing this on 
+
+        ###Non-spatial parameters have general structure of calc_prm(cfrad)
+        ###Where PRM is the 3 lettter abbreviation of the parameter
+        ###and the full cfradial is passed because oftentimes multiple fields are requried 
+        regex_match = match(func_regex, task) 
+        
+        if (!isnothing(regex_match))
+
             startTime = time() 
 
-            raw = @eval $curr_func($cfrad[$var][:,:])[:]
-            filled = Vector{Float64}
-            filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            func = Symbol(func_prefix * lowercase(regex_match[1]))
+            var = regex_match[2]
 
+            raw = @eval $func($cfrad[$var][:,:])[:]
+            filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            
             any(isnan, filled) ? throw("NAN ERROR") : 
 
             X[:, i] = filled[:]
             calc_length = time() - startTime
-            #println("Completed in $calc_length s"...)
-            #println() 
-            
-        else 
-            #println("GETTING: $task...")
 
-            if (task == "PGG") 
-                startTime = time() 
-                ##Change missing values to FILL_VAL 
-                PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
-                X[:, i] = PGG
-                PGG_Completed_Flag = true 
-                calc_length = time() - startTime
-                #println("Completed in $calc_length s"...)
-            elseif (task == "NCP")
-                startTime = time()
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in get_NCP(cfrad)[:]]
-                calc_length = time() - startTime
-                #println("Completed in $calc_length s"...)
-            elseif (task == "AHT")
-                startTime = time()
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_aht(cfrad)[:]]
-                #println("Completed in $(time() - startTime) seconds")
-            elseif (task == "RNG") 
-                startTime = time() 
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in get_RNG(cfrad)[:]]
-                #println("Completed in $(time() - startTime) seconds")
-            elseif (task == "NRG")
-                startTime = time()
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in get_NRG(cfrad)[:]]
-                #println("Completed in $(time() - startTime) seconds")
-            else
-                startTime = time() 
-                X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
-                calc_length = time() - startTime
-                #println("Completed in $calc_length s"...)
+
+        elseif (task in valid_derived_params)
+
+            startTime = time() 
+
+            func = Symbol(func_prefix * lowercase(task))
+            raw = @eval $func($cfrad)[:]
+            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+
+            if (task == "PGG")
+                PGG_Completed_Flag = true
+                PGG = X[:, i]
             end 
-            #println()
+
+            if (task == "NCP") 
+                NCP_Completed_Flag = true 
+                NCP = X[:, i]
+            end 
+
+            calc_length = time() - startTime 
+        
+        ###Otherwise it's just a variable from the cfrad 
+        else 
+            startTime = time() 
+            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
+            calc_length = time() - startTime
         end 
     end
 
@@ -474,30 +479,22 @@ function process_single_file(cfrad::NCDataset, argfile_path;
     ###Begin by simply removing the gates where no velocity is found 
     #println("REMOVING MISSING DATA BASED ON $(remove_variable)...")
     starttime = time() 
+
     VT = cfrad[remove_variable][:]
-
-    ###Indexer will be boolean array determining whether or not to
-    ###retain a gate for output into the model training/testing set 
     INDEXER = [ismissing(x) ? false : true for x in VT]
-    #println("COMPLETED IN $(round(time()-starttime, sigdigits=4))s")
-    #println("") 
-
-    #println("FILTERING")
+  
     starttime=time()
 
     if (REMOVE_LOW_NCP)
-        #println("REMOVING BASED ON NCP")
-        #println("INITIAL COUNT: $(count(INDEXER))")
-        NCP = get_NCP(cfrad)
-        ###Only need to modify the portions of the indexer that are currently true
-        INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
-        #println("FINAL COUNT: $(count(INDEXER))")
+        if (NCP_Completed_Flag) 
+            INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
+        else 
+            NCP = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_ncp(cfrad)[:]]
+            INDEXER[INDEXER] = [ x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
+        end 
     end
 
     if (REMOVE_HIGH_PGG)
-
-        #println("REMOVING BASED ON PGG")
-        #println("INITIAL COUNT: $(count(INDEXER))")
         
         if (PGG_Completed_Flag)
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
@@ -506,18 +503,10 @@ function process_single_file(cfrad::NCDataset, argfile_path;
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
         end
 
-        #println("FINAL COUNT: $(count(INDEXER))")
-        #println()
     end
     
-    #println("COMPLETED IN $(round(time()-starttime, sigdigits=4))s")
-
-
-    #println("INDEXER SHAPE: $(size(INDEXER))")
-    #println("X SHAPE: $(size(X))")
-
     X = X[INDEXER, :] 
-    #println("NEW X SHAPE: $(size(X))")
+
     
     ###Allows for use with already QC'ed files to output a Y array for 
     ###model training 
@@ -532,22 +521,152 @@ function process_single_file(cfrad::NCDataset, argfile_path;
 
         Y = reshape([ismissing(x) ? 0 : 1 for x in VG .- VV][:], (:, 1))
         calc_length = time() - startTime
-        #println("Completed in $calc_length s"...)
-        #println()
-
-
-        #println()
-        #println("FINAL X SHAPE: $(size(X))")
-        #println("FINAL Y SHAPE: $(size(Y))")
 
         return(X, Y, INDEXER)
     else
-        #println("NO MANUAL QC")
-        #println("FINAL X SHAPE: $(size(X))")
+
         return(X, false, INDEXER)
     end 
 end 
+
+
+###Multiple dispatch version of process_single_file that allows user to specify a vector of weight matrixes 
+###In this case will also pass the tasks to complete as a vector 
+###weight_matrixes are also implicitly the window size 
+function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}; 
+    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV")
+
     
+    ###Features array 
+    X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
+
+    ###Array to hold PGG for indexing  
+    PGG = Matrix{Float64}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
+
+    PGG_Completed_Flag = false 
+    NCP_Completed_Flag = false 
+
+    for (i, task) in enumerate(tasks)
+
+        ###Test to see if task involves a spatial parameter function call) 
+        ###A match implies spatial parameter, otherwise we assume it is just 
+        ###simple derived parameter.
+
+        ###Spatial parameters have general structure of calc_prm(cfrad_field)
+        ###Where PRM is the 3 letter abbreviation of the spatial paramter (AVG, STD, etc.)
+        ###and the cfrad_field is the variable we are performing this on 
+
+        ###Non-spatial parameters have general structure of calc_prm(cfrad)
+        ###Where PRM is the 3 lettter abbreviation of the parameter
+        ###and the full cfradial is passed because oftentimes multiple fields are requried 
+        regex_match = match(func_regex, task) 
+        
+        
+        ###If we get a match, we have a spatial parameter function 
+        ###Weights are only important for these values 
+        if (!isnothing(regex_match))
+
+            startTime = time() 
+
+            func = Symbol(func_prefix * lowercase(regex_match[1]))
+            var = regex_match[2]
+
+            weight_matrix = weight_matrixes[i]
+            window_size = size(weight_matrix)
+            raw = @eval $func($cfrad[$var][:,:]; weights = $weight_matrix, window = $window_size)[:]
+            filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            
+            any(isnan, filled) ? throw("NAN ERROR") : 
+
+            X[:, i] = filled[:]
+            calc_length = time() - startTime
+
+
+        elseif (task in valid_derived_params)
+
+            startTime = time() 
+
+            func = Symbol(func_prefix * lowercase(task))
+            raw = @eval $func($cfrad)[:]
+            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+
+            if (task == "PGG")
+                PGG_Completed_Flag = true
+                PGG = X[:, i]
+            end 
+
+            if (task == "NCP") 
+                NCP_Completed_Flag = true 
+                NCP = X[:, i]
+            end 
+
+            calc_length = time() - startTime 
+        
+        ###Otherwise it's just a variable from the cfrad 
+        else 
+            startTime = time() 
+            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
+            calc_length = time() - startTime
+        end 
+    end
+
+
+    ###Uses INDEXER to remove data not meeting basic quality thresholds
+    ###A value of 0 in INDEXER will remove the data from training/evaluation 
+    ###by the subsequent random forest model 
+
+    ###Begin by simply removing the gates where no velocity is found 
+    #println("REMOVING MISSING DATA BASED ON $(remove_variable)...")
+    starttime = time() 
+
+    VT = cfrad[remove_variable][:]
+    INDEXER = [ismissing(x) ? false : true for x in VT]
+  
+    starttime=time()
+
+    if (REMOVE_LOW_NCP)
+        if (NCP_Completed_Flag) 
+            INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
+        else 
+            NCP = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_ncp(cfrad)[:]]
+            INDEXER[INDEXER] = [ x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
+        end 
+    end
+
+    if (REMOVE_HIGH_PGG)
+        
+        if (PGG_Completed_Flag)
+            INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
+        else
+            PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
+            INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
+        end
+
+    end
+    
+    X = X[INDEXER, :] 
+
+    
+    ###Allows for use with already QC'ed files to output a Y array for 
+    ###model training 
+    if HAS_MANUAL_QC
+
+        #println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
+        startTime = time() 
+        ###try catch block here to see if the scan has manual QC
+        ###Filter the input arrays first 
+        VG = cfrad[QC_variable][:][INDEXER]
+        VV = cfrad[remove_variable][:][INDEXER]
+
+        Y = reshape([ismissing(x) ? 0 : 1 for x in VG .- VV][:], (:, 1))
+        calc_length = time() - startTime
+
+        return(X, Y, INDEXER)
+    else
+
+        return(X, false, INDEXER)
+    end 
+end 
     ##Applies function given by func to the weighted version of the matrix given by var 
     ##Also applies controls for missing variables to both weights and var 
     ##If there are Missing values in either the variable or the weights, they will be ignored 

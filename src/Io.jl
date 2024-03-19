@@ -4,6 +4,8 @@ export remove_validation
 function remove_validation(input_dataset::String; training_output="train_no_validation_set.h5", validation_output = "validation.h5")
         
     currset = h5open(input_dataset)
+    params = attrs(currset)["Parameters"]
+    FILL_VAL = attrs(currset)["MISSING_FILL_VALUE"]
 
     X = currset["X"][:,:]
     Y = currset["Y"][:,:] 
@@ -23,9 +25,14 @@ function remove_validation(input_dataset::String; training_output="train_no_vali
     
     write_dataset(validation_out, "X", X[validation_indexer, :])
     write_dataset(validation_out, "Y", Y[validation_indexer, :])
+    attributes(validation_out)["MISSING_FILL_VALUE"] = FILL_VAL
+    attributes(validation_out)["Parameters"] = params
+
 
     write_dataset(training_out, "X", X[test_indexer, :])
     write_dataset(training_out, "Y", Y[test_indexer, :])
+    attributes(training_out)["MISSING_FILL_VALUE"] = FILL_VAL
+    attributes(training_out)["Parameters"] = params
 
     close(currset)
     close(validation_out)

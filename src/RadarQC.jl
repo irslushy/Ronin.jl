@@ -21,6 +21,7 @@ module RadarQC
     export train_model 
     export QC_scan 
 
+
     """
     Function to process a set of cfradial files and produce a set of input features for training/evaluating a model 
         input_loc: cfradial files are specified by input_loc - can be either a file or a directory
@@ -32,8 +33,8 @@ module RadarQC
                           these gates will be removed from the outputted features so that the model 
                           is not trained on missing data
     """
-    function calculate_features(input_loc::String, argument_file::String, output_file::String; verbose=false,
-        HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV")
+    function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_MANUAL_QC::Bool; 
+        verbose=false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV")
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -110,6 +111,100 @@ module RadarQC
         close(fid)
 
     end 
+
+
+    """
+    Function to process a set of cfradial files and produce a set of input features for training/evaluating a model 
+        input_loc: cfradial files are specified by input_loc - can be either a file or a directory
+        tasks: Features to be calculated
+        weight_matrixes: Vector of matrixes that specify size and weights for each spatial variable
+        output_file : Location to output the resulting dataset
+
+        Keyword Arguments: 
+        remove_variable - variable in CFRadial file used to determine where 'missing' gates are. 
+                          these gates will be removed from the outputted features so that the model 
+                          is not trained on missing data
+    """
+    function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
+        ,output_file::String, HAS_MANUAL_QC::Bool; verbose=false,
+         REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV")
+
+        ##If this is a directory, things get a little more complicated 
+        paths = Vector{String}()
+    
+        if isdir(input_loc) 
+            paths = parse_directory(input_loc)
+        else 
+            paths = [input_loc]
+        end 
+        
+        ###Setup h5 file for outputting mined parameters
+        ###processing will proceed in order of the tasks, so 
+        ###add these as an attribute akin to column headers in the H5 dataset
+        ###Also specify the fill value used 
+    
+        println("OUTPUTTING DATA IN HDF5 FORMAT TO FILE: $(output_file)")
+        fid = h5open(output_file, "w")
+    
+        ###Add information to output h5 file 
+        attributes(fid)["Parameters"] = tasks
+        attributes(fid)["MISSING_FILL_VALUE"] = FILL_VAL
+    
+        ##Instantiate Matrixes to hold calculated features and verification data 
+        output_cols = length(tasks)
+    
+        newX = X = Matrix{Float64}(undef,0,output_cols)
+        newY = Y = Matrix{Int64}(undef, 0,1) 
+    
+        
+        starttime = time() 
+    
+        for (i, path) in enumerate(paths) 
+            try 
+                cfrad = Dataset(path) 
+                pathstarttime=time() 
+                (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
+                                            HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                            REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable)
+                close(cfrad)
+
+                if verbose
+                    println("Processed $(path) in $(time()-pathstarttime) seconds")
+                end 
+
+            catch e
+                if isa(e, DimensionMismatch)
+                    printstyled(Base.stderr, "POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)\n"; color=:red)
+                else 
+                    printstyled(Base.stderr, "UNRECOVERABLE ERROR\n"; color=:red)
+                    close(fid)
+                    throw(e)
+    
+                ##@TODO CATCH exception handling for invalid task 
+                end
+            else
+                X = vcat(X, newX)::Matrix{Float64}
+                Y = vcat(Y, newY)::Matrix{Int64}
+            end
+        end 
+    
+        println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 2)) SECONDS")
+    
+        ###Get verification information 
+        ###0 indicates NON METEOROLOGICAL data that was removed during manual QC
+        ###1 indicates METEOROLOGICAL data that was retained during manual QC 
+        
+        ##Probably only want to write once, I/O is very slow 
+        println()
+        println("WRITING DATA TO FILE OF SHAPE $(size(X))")
+        X
+        println("X TYPE: $(typeof(X))")
+        write_dataset(fid, "X", X)
+        write_dataset(fid, "Y", Y)
+        close(fid)
+
+    end 
+
 
 
     function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5" )
@@ -235,6 +330,8 @@ module RadarQC
                 println()
                 printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
                 println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
+
+                close(input_cfrad)
 
             end 
         end 
