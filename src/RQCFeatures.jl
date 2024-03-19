@@ -456,7 +456,7 @@ function process_single_file(cfrad::NCDataset, argfile_path;
                 PGG = X[:, i]
             end 
 
-            if (task == "NCP") 
+            if (task == "NCP" || task == "SQI") 
                 NCP_Completed_Flag = true 
                 NCP = X[:, i]
             end 
@@ -595,7 +595,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
                 PGG = X[:, i]
             end 
 
-            if (task == "NCP") 
+            if (task == "NCP" || taks == "SQI") 
                 NCP_Completed_Flag = true 
                 NCP = X[:, i]
             end 
