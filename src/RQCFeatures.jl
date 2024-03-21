@@ -178,37 +178,56 @@ function prob_groundgate(elevation_angle, antenna_range, aircraft_height, azimut
 end 
 
 ##Calculate the windowed standard deviation of a given variablevariable 
-function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_weights, window = std_window)
+function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_weights, window = std_window, replace_missing_with_fill = true)
     if size(weights) != window
         error("Weight matrix does not equal window size")
     end
+
+    if (replace_missing_with_fill)
+        var[map(ismissing, var)] .= FILL_VAL
+    end 
 
     mapwindow((x) -> _weighted_func(x, weights, std), var, window, border=Fill(missing))
 end 
 
 ##Calculate the windowed standard deviation of a given variablevariable 
-function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_window)
+function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_window, replace_missing_with_fill = true)
     if size(weights) != window
         error("Weight matrix does not equal window size")
     end
+
+    if (replace_missing_with_fill)
+        var[map(ismissing, var)] .= FILL_VAL
+    end 
+
+    ###Replace mising values with FILL_VAL
 
     mapwindow((x) -> _weighted_func(x, weights, std), var, window, border=Fill(missing))
 end 
 
-function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, window = avg_window)
+function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, window = avg_window, replace_missing_with_fill=true)
 
     if size(weights) != window
         error("Weight matrix does not equal window size")
     end
+
+    if (replace_missing_with_fill)
+        var[map(ismissing, var)] .= FILL_VAL
+    end 
 
     mapwindow((x) -> _weighted_func(x, weights, mean), var, window, border=Fill(missing))
 end
 
-function calc_avg(var::Matrix{}; weights = avg_weights, window = avg_window)
+function calc_avg(var::Matrix{}; weights = avg_weights, window = avg_window, replace_missing_with_fill = true)
 
     if size(weights) != window
         error("Weight matrix does not equal window size")
     end
+
+    if (replace_missing_with_fill)
+        var[map(ismissing, var)] .= FILL_VAL
+    end 
+
 
     mapwindow((x) -> _weighted_func(x, weights, mean), var, window, border=Fill(missing))
 end

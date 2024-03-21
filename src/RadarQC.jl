@@ -253,6 +253,18 @@ module RadarQC
     end     
 
 
+    ###Simple function to process an h5 file with already processed features using a given model and return its predictions 
+    function predict_with_model(model_path::String, input_h5::String)
+        joblib = pyimport("joblib")
+        input_h5 = h5open(input_h5)
+        X = input_h5["X"][:,:]
+        Y = input_h5["Y"][:]
+        
+        new_model = joblib.load(model_path)
+        predictions = pyconvert(Vector{Float64}, new_model.predict(X))
+        return((Y, predictions))
+    end 
+
     ###TODO: Fix arguments etc 
     ###Can have one for a single file and one for a directory 
     """
