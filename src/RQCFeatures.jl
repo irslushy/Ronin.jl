@@ -178,37 +178,56 @@ function prob_groundgate(elevation_angle, antenna_range, aircraft_height, azimut
 end 
 
 ##Calculate the windowed standard deviation of a given variablevariable 
-function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_weights, window = std_window)
+function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_weights, window = std_window, replace_missing_with_fill = true)
     if size(weights) != window
         error("Weight matrix does not equal window size")
     end
+
+    if (replace_missing_with_fill)
+        var[map(ismissing, var)] .= FILL_VAL
+    end 
 
     mapwindow((x) -> _weighted_func(x, weights, std), var, window, border=Fill(missing))
 end 
 
 ##Calculate the windowed standard deviation of a given variablevariable 
-function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_window)
+function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_window, replace_missing_with_fill = true)
     if size(weights) != window
         error("Weight matrix does not equal window size")
     end
+
+    if (replace_missing_with_fill)
+        var[map(ismissing, var)] .= FILL_VAL
+    end 
+
+    ###Replace mising values with FILL_VAL
 
     mapwindow((x) -> _weighted_func(x, weights, std), var, window, border=Fill(missing))
 end 
 
-function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, window = avg_window)
+function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, window = avg_window, replace_missing_with_fill=true)
 
     if size(weights) != window
         error("Weight matrix does not equal window size")
     end
+
+    if (replace_missing_with_fill)
+        var[map(ismissing, var)] .= FILL_VAL
+    end 
 
     mapwindow((x) -> _weighted_func(x, weights, mean), var, window, border=Fill(missing))
 end
 
-function calc_avg(var::Matrix{}; weights = avg_weights, window = avg_window)
+function calc_avg(var::Matrix{}; weights = avg_weights, window = avg_window, replace_missing_with_fill = true)
 
     if size(weights) != window
         error("Weight matrix does not equal window size")
     end
+
+    if (replace_missing_with_fill)
+        var[map(ismissing, var)] .= FILL_VAL
+    end 
+
 
     mapwindow((x) -> _weighted_func(x, weights, mean), var, window, border=Fill(missing))
 end
@@ -311,7 +330,7 @@ function get_task_params(params_file, variablelist; delimiter=",")
                     end 
                 else
                     ###Otherwise, check to see if this is a valid variable 
-                    if token in variablelist || token ∈ valid_funcs || token ∈ valid_derived_params
+                    if token in variablelist || token ∈ valid_funcs || token ∈ valid_derived_params 
                         push!(task_param_list, token)
                     else
                         printstyled("\"$token\" NOT FOUND IN CFRAD FILE.... POTENTIAL ERROR IN CONFIG FILE\n", color=:red)
@@ -534,7 +553,7 @@ end
 ###In this case will also pass the tasks to complete as a vector 
 ###weight_matrixes are also implicitly the window size 
 function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}; 
-    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV")
+    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", remove_missing=true)
 
     
     ###Features array 
@@ -595,7 +614,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
                 PGG = X[:, i]
             end 
 
-            if (task == "NCP" || taks == "SQI") 
+            if (task == "NCP" || task == "SQI") 
                 NCP_Completed_Flag = true 
                 NCP = X[:, i]
             end 
@@ -619,9 +638,13 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
     #println("REMOVING MISSING DATA BASED ON $(remove_variable)...")
     starttime = time() 
 
-    VT = cfrad[remove_variable][:]
-    INDEXER = [ismissing(x) ? false : true for x in VT]
-  
+    if (remove_missing)
+        VT = cfrad[remove_variable][:]
+        INDEXER = [ismissing(x) ? false : true for x in VT]
+    else
+        INDEXER = fill(true, length(cfrad[remove_variable][:]))
+    end 
+    
     starttime=time()
 
     if (REMOVE_LOW_NCP)
