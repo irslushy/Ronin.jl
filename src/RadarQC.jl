@@ -89,10 +89,11 @@ module RadarQC
     
                 ##@TODO CATCH exception handling for invalid task 
                 end
-            else
-                X = vcat(X, newX)::Matrix{Float64}
-                Y = vcat(Y, newY)::Matrix{Int64}
             end
+
+            X = vcat(X, newX)::Matrix{Float64}
+            Y = vcat(Y, newY)::Matrix{Int64}
+
         end 
     
         println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 2)) SECONDS")
@@ -182,10 +183,11 @@ module RadarQC
     
                 ##@TODO CATCH exception handling for invalid task 
                 end
-            else
-                X = vcat(X, newX)::Matrix{Float64}
-                Y = vcat(Y, newY)::Matrix{Int64}
-            end
+            end 
+
+            X = vcat(X, newX)::Matrix{Float64}
+            Y = vcat(Y, newY)::Matrix{Int64}
+
         end 
     
         println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 2)) SECONDS")
