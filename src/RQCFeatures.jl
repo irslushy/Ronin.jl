@@ -58,7 +58,7 @@ function calc_rng(data::NCDataset)
 end 
 
 function calc_nrg(data::NCDataset)
-    rngs = get_RNG(data)
+    rngs = calc_rng(data)
     alts = repeat(transpose(data["altitude"][:]), length(data["range"]), 1)
     return(rngs ./ alts)
 end 
@@ -330,7 +330,7 @@ function get_task_params(params_file, variablelist; delimiter=",")
                     end 
                 else
                     ###Otherwise, check to see if this is a valid variable 
-                    if token in variablelist || token ∈ valid_funcs || token ∈ valid_derived_params
+                    if token in variablelist || token ∈ valid_funcs || token ∈ valid_derived_params 
                         push!(task_param_list, token)
                     else
                         printstyled("\"$token\" NOT FOUND IN CFRAD FILE.... POTENTIAL ERROR IN CONFIG FILE\n", color=:red)
@@ -553,7 +553,7 @@ end
 ###In this case will also pass the tasks to complete as a vector 
 ###weight_matrixes are also implicitly the window size 
 function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}; 
-    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV")
+    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", remove_missing=true)
 
     
     ###Features array 
@@ -614,7 +614,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
                 PGG = X[:, i]
             end 
 
-            if (task == "NCP" || taks == "SQI") 
+            if (task == "NCP" || task == "SQI") 
                 NCP_Completed_Flag = true 
                 NCP = X[:, i]
             end 
@@ -638,9 +638,13 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
     #println("REMOVING MISSING DATA BASED ON $(remove_variable)...")
     starttime = time() 
 
-    VT = cfrad[remove_variable][:]
-    INDEXER = [ismissing(x) ? false : true for x in VT]
-  
+    if (remove_missing)
+        VT = cfrad[remove_variable][:]
+        INDEXER = [ismissing(x) ? false : true for x in VT]
+    else
+        INDEXER = fill(true, length(cfrad[remove_variable][:]))
+    end 
+    
     starttime=time()
 
     if (REMOVE_LOW_NCP)
