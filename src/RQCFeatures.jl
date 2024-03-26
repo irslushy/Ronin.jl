@@ -58,7 +58,7 @@ function calc_rng(data::NCDataset)
 end 
 
 function calc_nrg(data::NCDataset)
-    rngs = get_RNG(data)
+    rngs = calc_rng(data)
     alts = repeat(transpose(data["altitude"][:]), length(data["range"]), 1)
     return(rngs ./ alts)
 end 
