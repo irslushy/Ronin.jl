@@ -26,40 +26,40 @@ module RadarQC
 
     Function to process a set of cfradial files and produce input features for training/evaluating a model 
 
-        #Required arguments 
+    #Required arguments 
 
-        ``input_loc::String``
-        Path to input cfradial or directory of input cfradials 
+    ``input_loc::String``
+    Path to input cfradial or directory of input cfradials 
 
-        ``argument_file::String``
-        Path to configuration file containing which features to calculate 
+    ``argument_file::String``
+    Path to configuration file containing which features to calculate 
 
-        ``output_file::String``
-        Path to output calculated features to (generally ends in .h5)
+    ``output_file::String``
+    Path to output calculated features to (generally ends in .h5)
 
-        ``HAS_MANUAL_QC::Bool``
-        Specifies whether or not the file(s) have already undergone a manual QC procedure. 
-        If true, function will also output a `Y` array used to verify where manual QC removed gates. This array is
-        formed by considering where gates with non-missing data in raw scans (specified by `remove_variable`) are
-        set to missing after QC is performed. 
+    ``HAS_MANUAL_QC::Bool``
+    Specifies whether or not the file(s) have already undergone a manual QC procedure. 
+    If true, function will also output a `Y` array used to verify where manual QC removed gates. This array is
+    formed by considering where gates with non-missing data in raw scans (specified by `remove_variable`) are
+    set to missing after QC is performed. 
 
-        #Optional keyword arguments 
+    #Optional keyword arguments 
 
-        ``verbose::Bool``
-        If true, will print out timing information as each file is processed 
+    ``verbose::Bool``
+    If true, will print out timing information as each file is processed 
 
-        ``REMOVE_LOW_NCP::Bool``
-        If true, will ignore gates with Normalized Coherent Power/Signal Quality Index below a threshold specified in RQCFeatures.jl
+    ``REMOVE_LOW_NCP::Bool``
+    If true, will ignore gates with Normalized Coherent Power/Signal Quality Index below a threshold specified in RQCFeatures.jl
 
-        ``REMOVE_HIGH_PGG::Bool``
-        If true, will ignore gates with Probability of Ground Gate (PGG) values at or above a threshold specified in RQCFeatures.jl 
+    ``REMOVE_HIGH_PGG::Bool``
+    If true, will ignore gates with Probability of Ground Gate (PGG) values at or above a threshold specified in RQCFeatures.jl 
 
-        ``QC_variable::String``
-        Name of variable in input NetCDF files that has been quality-controlled. 
+    ``QC_variable::String``
+    Name of variable in input NetCDF files that has been quality-controlled. 
 
-        ``remove_variable::String``
-        Name of a raw variable in input NetCDF files. Used to determine where missing data exists in the input sweeps. 
-        Data at these locations will be removed from the outputted features. 
+    ``remove_variable::String``
+    Name of a raw variable in input NetCDF files. Used to determine where missing data exists in the input sweeps. 
+    Data at these locations will be removed from the outputted features. 
 
         
     """
