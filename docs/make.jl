@@ -7,7 +7,7 @@ makedocs(sitename="RadarQC.jl",
             "Home" => "index.md"
         ],
         format = Documenter.HTML(prettyurls = false),
-        checkdocks=:none)
+        checkdocs=:none)
 
 deploydocs(;
     repo="github.com/irslushy/RadarQC.jl.git",
