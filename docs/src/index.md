@@ -13,3 +13,10 @@ split_training_testing!
 ```@docs
 QC_scan
 ```
+
+## Non-user facing
+
+```@docs
+get_task_params
+process_single_file
+```
