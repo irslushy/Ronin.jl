@@ -1,11 +1,15 @@
-<h1> API / Function References </h1>
-<h2>Calculating Model Input Features</h2>
+# API / Function References 
+
+## Calculating Model Input Features  
 
 ```@docs 
-process_single_file
-QC_scan
-get_task_params
 calculate_features(::String, ::Vector{String}, ::Vector{Matrix{Union{Missing, Float64}}}, ::String, ::Bool)
 calculate_features(::String, ::String, ::String, ::Bool)
 split_training_testing!
 ``` 
+
+## Applying a trained model to data 
+
+```@docs
+QC_scan
+```
