@@ -23,18 +23,48 @@ module RadarQC
 
 
     """
-    Function to process a set of cfradial files and produce a set of input features for training/evaluating a model 
-        input_loc: cfradial files are specified by input_loc - can be either a file or a directory
-        argumet_file: Features to be calculated are specified in a file located at arg_file 
-        output_file : Location to output the resulting dataset
 
-        Keyword Arguments: 
-        remove_variable - variable in CFRadial file used to determine where 'missing' gates are. 
-                          these gates will be removed from the outputted features so that the model 
-                          is not trained on missing data
+    Function to process a set of cfradial files and produce input features for training/evaluating a model 
+
+        #Required arguments 
+
+        ``input_loc::String``
+        Path to input cfradial or directory of input cfradials 
+
+        ``argument_file::String``
+        Path to configuration file containing which features to calculate 
+
+        ``output_file::String``
+        Path to output calculated features to (generally ends in .h5)
+
+        ``HAS_MANUAL_QC::Bool``
+        Specifies whether or not the file(s) have already undergone a manual QC procedure. 
+        If true, function will also output a `Y` array used to verify where manual QC removed gates. This array is
+        formed by considering where gates with non-missing data in raw scans (specified by `remove_variable`) are
+        set to missing after QC is performed. 
+
+        #Optional keyword arguments 
+
+        ``verbose::Bool``
+        If true, will print out timing information as each file is processed 
+
+        ``REMOVE_LOW_NCP::Bool``
+        If true, will ignore gates with Normalized Coherent Power/Signal Quality Index below a threshold specified in RQCFeatures.jl
+
+        ``REMOVE_HIGH_PGG::Bool``
+        If true, will ignore gates with Probability of Ground Gate (PGG) values at or above a threshold specified in RQCFeatures.jl 
+
+        ``QC_variable::String``
+        Name of variable in input NetCDF files that has been quality-controlled. 
+
+        ``remove_variable::String``
+        Name of a raw variable in input NetCDF files. Used to determine where missing data exists in the input sweeps. 
+        Data at these locations will be removed from the outputted features. 
+
+        
     """
     function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_MANUAL_QC::Bool; 
-        verbose=false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV")
+        verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false, QC_variable::String = "VG", remove_variable::String = "VV")
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
