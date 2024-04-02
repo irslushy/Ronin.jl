@@ -12,12 +12,11 @@ ___
 After cloning the repository, start Julia using RadarQC as the project directory, either by calling 
 ```
 julia --project=RadarQC
-``` 
-or modifying the `JULIA_PROJECT` environment variable. <br>
+```
+from the parent directory of `RadarQC` or modifying the `JULIA_PROJECT` environment variable. <br>
 Then, enter package mode in the REPL by pressing `]`.<br>
-After the REPL changes color to indicate you are in package mode, enter `activate` to activate the RadarQC package environment. 
 <br><br>
-Next, run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the RadarQC package. Now, exit package using ctrl-C. To ensure that everything was installed properly, run `using RadarQC` on the command line. No errors or information should print out if successful. 
+Next, run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the RadarQC package. Now, exit package using the dlete key. To ensure that everything was installed properly, run `using RadarQC` on the Julia REPL. No errors or information should print out if successful. 
 > Guide adaped from https://github.com/mmbell/Scythe.jl/tree/main 
 ___
 <br>
