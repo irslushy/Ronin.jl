@@ -8,7 +8,7 @@ A key part of the process is computing necessary derived parameters from the raw
   
 ___
 # Getting Started:
-## Setting up the environment 
+## Setting up the environment (CSU)
 After cloning the repository, start Julia using RadarQC as the project directory, either by calling 
 ```
 julia --project=RadarQC
@@ -17,9 +17,25 @@ from the parent directory of `RadarQC` or modifying the `JULIA_PROJECT` environm
 Then, enter package mode in the REPL by pressing `]`.<br>
 <br><br>
 Next, run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the RadarQC package. Now, exit package using the dlete key. To ensure that everything was installed properly, run `using RadarQC` on the Julia REPL. No errors or information should print out if successful. 
-> Guide adaped from https://github.com/mmbell/Scythe.jl/tree/main 
-___
+> Guide adaped from https://github.com/mmbell/Scythe.jl/tree/main
+>
+> ## Setting up the environment (Derecho)
+### Getting Julia
+export JULIA_DEPOT_PATH=$SCRATCH/julia
+curl -fsSL https://install.julialang.org | sh
 <br>
+### Setting up RadarQC project
+After cloning the repository, start Julia using RadarQC as the project directory, either by calling 
+```
+julia --project=RadarQC
+```
+from the parent directory of `RadarQC` or modifying the `JULIA_PROJECT` environment variable. <br>
+Then, enter package mode in the REPL by pressing `]`.<br>
+<br><br>
+Next, run `activate “<path/to/repo/RadarQC.jl>”`. Then run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the RadarQC package. Run `add iJulia` if you will be viewing the code in a Jupyter notebook and need access to the Jupyter kernel.
+
+Now, exit package mode using the delete key. To ensure that everything was installed properly, run `using RadarQC` on the Julia REPL. No errors or information should print out if successful. 
+> Guide adapted from https://github.com/mmbell/Scythe.jl/tree/main
 
 ## Example notebook 
 <br>
