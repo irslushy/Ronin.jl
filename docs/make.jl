@@ -10,6 +10,5 @@ makedocs(sitename="RadarQC.jl",
 
 deploydocs(;
     repo="github.com/irslushy/RadarQC.jl.git",
-    deploy_config="../.github/workflows/Documentation.yml",
     devbranch="main"
 )
