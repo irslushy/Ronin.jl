@@ -23,7 +23,7 @@ suite["features"] = BenchmarkGroup(["tag1"])
 suite["features"][10] = @benchmarkable calculate_features(benchmark_cfrad_locs, tasks, weight_matrixes, 
                                                                 "garbage.h5", true; verbose=true, 
                                                                 REMOVE_LOW_NCP = true, REMOVE_HIGH_PGG = true, 
-                                                                QC_variable="VT", remove_variable="VEL")
+                                                                QC_variable="VG", remove_variable="VV")
 
 
 tune!(suite) 
