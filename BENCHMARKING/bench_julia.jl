@@ -1,9 +1,11 @@
-using RadarQC
-using BenchmarkTools
-using Missings
 using Pkg
 
 Pkg.instantiate()
+
+using RadarQC
+using BenchmarkTools
+using Missings
+
 
 ###Will quickly run benchmarks on a series of feature calculations for a cfradial 
 

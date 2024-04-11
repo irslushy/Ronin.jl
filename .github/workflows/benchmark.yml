@@ -19,14 +19,14 @@ jobs:
         with:
           version: '1.10'
       - name: Run benchmark
-        run: cd BENCHMARKING && julia --project=.. bench_julia.jl | tee output.txt
+        run: cd BENCHMARKING && julia --project=.. bench_julia.jl 
 
       - name: Store Benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: Julia benchmark result
           tool: 'julia'
-          output-file-path: BENCHMARKING/output.txt 
+          output-file-path: BENCHMARKING/output.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
 
