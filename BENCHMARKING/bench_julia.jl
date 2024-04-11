@@ -1,10 +1,13 @@
 using RadarQC
 using BenchmarkTools
 using Missings
+using Pkg
+
+Pkg.instantiate()
 
 ###Will quickly run benchmarks on a series of feature calculations for a cfradial 
 
-tasks=["ISO(VEL), AHT, STD(VEL), PGG, SQI, DBZ"]
+tasks=["SQI, AHT, STD(VV), PGG, RNG"]
 
 placeholder_matrix = allowmissing(ones(3,3))
 weight_matrixes = [allowmissing(ones(7,7)), placeholder_matrix, allowmissing(ones(5,5)),
