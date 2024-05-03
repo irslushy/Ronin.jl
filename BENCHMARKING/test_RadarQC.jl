@@ -7,8 +7,8 @@ using HDF5
 ###Correct results, but rather simply show that it can produce data, train a model, 
 ###and correctly apply the model to a scan. 
 
-TRAINING_PATH = "./benchmark_cfrads"
-config_file = "./sample_tasks.txt"
+TRAINING_PATH = "./BENCHMARKING/benchmark_cfrads"
+config_file = "./BENCHMARKING/sample_tasks.txt"
 
 
 ###Read in tasks
@@ -47,3 +47,4 @@ end
 
 
 ###Now, let's check that we can QC a scan. We'll use the NOAA model here. 
+
