@@ -85,10 +85,15 @@ module RadarQC
     Name of a raw variable in input NetCDF files. Used to determine where missing data exists in the input sweeps. 
     Data at these locations will be removed from the outputted features. 
 
-        
+    ```
+    replace_missing 
+    ```
+    Whether or not to replace MISSING values with FILL_VAL in spatial parameter calculations
+    Default value: False 
     """
     function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_MANUAL_QC::Bool; 
-        verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false, QC_variable::String = "VG", remove_variable::String = "VV")
+        verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false, QC_variable::String = "VG", remove_variable::String = "VV", 
+        replace_missing = false)
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -126,7 +131,8 @@ module RadarQC
                 pathstarttime=time() 
                 (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
                                             HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
-                                            REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable)
+                                            REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
+                                            replace_missing=replace_missing)
                 close(cfrad)
 
                 if verbose
@@ -182,7 +188,8 @@ module RadarQC
     """
     function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
         ,output_file::String, HAS_MANUAL_QC::Bool; verbose=false,
-         REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV")
+         REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", 
+         replace_missing=false)
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -220,7 +227,8 @@ module RadarQC
                 pathstarttime=time() 
                 (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
                                             HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
-                                            REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable)
+                                            REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
+                                            replace_missing=replace_missing)
                 close(cfrad)
 
                 if verbose
