@@ -8,19 +8,34 @@ A key part of the process is computing necessary derived parameters from the raw
   
 ___
 # Getting Started:
-## Setting up the environment 
+## Setting up the environment (CSU)
 After cloning the repository, start Julia using RadarQC as the project directory, either by calling 
 ```
 julia --project=RadarQC
-``` 
-or modifying the `JULIA_PROJECT` environment variable. <br>
+```
+from the parent directory of `RadarQC` or modifying the `JULIA_PROJECT` environment variable. <br>
 Then, enter package mode in the REPL by pressing `]`.<br>
-After the REPL changes color to indicate you are in package mode, enter `activate` to activate the RadarQC package environment. 
 <br><br>
-Next, run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the RadarQC package. Now, exit package using ctrl-C. To ensure that everything was installed properly, run `using RadarQC` on the command line. No errors or information should print out if successful. 
-> Guide adaped from https://github.com/mmbell/Scythe.jl/tree/main 
-___
+Next, run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the RadarQC package. Now, exit package using the dlete key. To ensure that everything was installed properly, run `using RadarQC` on the Julia REPL. No errors or information should print out if successful. 
+> Guide adaped from https://github.com/mmbell/Scythe.jl/tree/main
+>
+## Setting up the environment (Derecho)
+### Getting Julia
+export JULIA_DEPOT_PATH=$SCRATCH/julia <br>
+curl -fsSL https://install.julialang.org | sh
 <br>
+### Setting up RadarQC project
+After cloning the repository, start Julia using RadarQC as the project directory, either by calling 
+```
+julia --project=RadarQC
+```
+from the parent directory of `RadarQC` or modifying the `JULIA_PROJECT` environment variable. <br>
+Then, enter package mode in the REPL by pressing `]`.<br>
+<br><br>
+Next, run `activate “<path/to/repo/RadarQC.jl>”`. Then run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the RadarQC package. Run `add iJulia` if you will be viewing the code in a Jupyter notebook and need access to the Jupyter kernel.
+
+Now, exit package mode using the delete key. To ensure that everything was installed properly, run `using RadarQC` on the Julia REPL. No errors or information should print out if successful. 
+> Guide adapted from https://github.com/mmbell/Scythe.jl/tree/main
 
 ## Example notebook 
 <br>
@@ -53,7 +68,9 @@ train_model("training_set.h5", "trained_model.joblib")
 <b>NOTE: This may take on the order of 20-30 minutes if running on the entire ELDORA set.</b><br><br>
 This script also includes the option to verify the model on the training set and output the results to a separate h5 file. If you wish to do this, execute the same as above, but include the keyword argument `verify=true`<br><br>
 ## Evaluating the model <br>
-Now - let's apply the trained model on a set of data. The useful function here is QC_scan
+Now - let's apply the trained model on a set of data. The useful function here is `QC_scan`.  In order, pass it arguments of the input location, the configuration file, and the path to the trained model. For this reason, it's important to <b>keep the configuration file used to calculate input features in a known location</b>. 
+
+The function will calculate the necessary input features, apply the Random Forest model, and apply the resulting prediction the fields specified by keyword argument `VARIABLES_TO_QC`. These new variables will then be written back out into the specified netcdf file under the field name concatenated with keyword argument `QC_suffix`. If this name is already in use in the NetCDF, it will be overwritten. 
 ___
 
 ## Notes on data conventions
@@ -62,8 +79,7 @@ For the verification 'Y' array in the training scripts I have adopted the conven
 
 Furthermore, for QC-ed variables in the output files, the following is adopted:  
 
-UNDEF/MISSING: Missing data in the original file or didn't meet QC thresholds
-FILL_VALUE: Removed during MLQC process
+FILL_VALUE: Removed during MLQC process or didn't meet QC thresholds 
 VALUE: Retained during MLQC process 
 
 Data is written out to NetCDF files to be CF-Compliant in Julia and other column-major languages, such that it has dimensions of (range x time). 
