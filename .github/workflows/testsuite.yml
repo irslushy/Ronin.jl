@@ -1,0 +1,28 @@
+name: Testing Suite
+
+###Execute only on pull request so that it only takes place when a larger version is updated
+on:
+  push: 
+    branches:
+      - bug_fixes
+      - main
+  pull_request:
+
+jobs: 
+  test: 
+    permissions:
+        contents: write
+        statuses: write
+    runs-on: ubuntu-latest 
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: '1.10'
+      - uses: julia-actions/cache@v1
+      - name: Install dependencies
+        run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
+      - name: Run test suite 
+        run: julia --project=. BENCHMARKING/test_RadarQC.jl 
+          

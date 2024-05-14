@@ -41,7 +41,8 @@ PGG_THRESHOLD::Float64 = 1.
 REMOVE_LOW_NCP::Bool = true 
 REMOVE_HIGH_PGG::Bool = true 
 
-
+##Whether or not to replace a MISSING value with FILL in the spatial calculations 
+REPLACE_MISSING_WITH_FILL::Bool = false 
 ###Side note - I do realize that Julia will return the last statement of a function automatically, 
 ###but am including the return statement here for increased code clarity 
 
@@ -178,12 +179,12 @@ function prob_groundgate(elevation_angle, antenna_range, aircraft_height, azimut
 end 
 
 ##Calculate the windowed standard deviation of a given variablevariable 
-function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_weights, window = std_window, replace_missing_with_fill = true)
+function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_weights, window = std_window)
     if size(weights) != window
         error("Weight matrix does not equal window size")
     end
 
-    if (replace_missing_with_fill)
+    if (REPLACE_MISSING_WITH_FILL)
         var[map(ismissing, var)] .= FILL_VAL
     end 
 
@@ -191,12 +192,12 @@ function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_we
 end 
 
 ##Calculate the windowed standard deviation of a given variablevariable 
-function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_window, replace_missing_with_fill = true)
+function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_window)
     if size(weights) != window
         error("Weight matrix does not equal window size")
     end
 
-    if (replace_missing_with_fill)
+    if (REPLACE_MISSING_WITH_FILL)
         var[map(ismissing, var)] .= FILL_VAL
     end 
 
@@ -205,26 +206,26 @@ function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_win
     mapwindow((x) -> _weighted_func(x, weights, std), var, window, border=Fill(missing))
 end 
 
-function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, window = avg_window, replace_missing_with_fill=true)
+function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, window = avg_window)
 
     if size(weights) != window
         error("Weight matrix does not equal window size")
     end
 
-    if (replace_missing_with_fill)
+    if (REPLACE_MISSING_WITH_FILL)
         var[map(ismissing, var)] .= FILL_VAL
     end 
 
     mapwindow((x) -> _weighted_func(x, weights, mean), var, window, border=Fill(missing))
 end
 
-function calc_avg(var::Matrix{}; weights = avg_weights, window = avg_window, replace_missing_with_fill = true)
+function calc_avg(var::Matrix{}; weights = avg_weights, window = avg_window)
 
     if size(weights) != window
         error("Weight matrix does not equal window size")
     end
 
-    if (replace_missing_with_fill)
+    if (REPLACE_MISSING_WITH_FILL)
         var[map(ismissing, var)] .= FILL_VAL
     end 
 
@@ -412,12 +413,16 @@ end
 
 """
 function process_single_file(cfrad::NCDataset, argfile_path; 
-    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV",)
+    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV",
+    replace_missing=false)
 
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
     #println("\r\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
     
-    
+    if replace_missing
+        global REPLACE_MISSING_WITH_FILL = true 
+    end 
+
     valid_vars = keys(cfrad)
     tasks = get_task_params(argfile_path, valid_vars)
     
@@ -553,8 +558,12 @@ end
 ###In this case will also pass the tasks to complete as a vector 
 ###weight_matrixes are also implicitly the window size 
 function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}; 
-    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", remove_missing=true)
+    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", remove_missing=true,
+    replace_missing = false)
 
+    if replace_missing
+        global REPLACE_MISSING_WITH_FILL = true 
+    end 
     
     ###Features array 
     X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
