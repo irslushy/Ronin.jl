@@ -5,7 +5,11 @@ RadarQC.jl contains a combination julia/python implementation of the algorithm d
 A key part of the process is computing necessary derived parameters from the raw radar moments, which may be custom-specified in a parameters file. Many of the relevant functions for these calculations are contained within [RadarQC.jl](./src/RadarQC.jl). 
 
   <br> 
+
+  ___
+  # Acknowledgments 
   
+  Much of the data used to train the models in this repository is the product of arduous manual editing of radar scans. ELDORA data is provided by the authors of [Bell, Lee, Wolff, & Cai 2013](https://journals.ametsoc.org/view/journals/apme/52/11/jamc-d-12-0283.1.xml?tab_body=fulltext-display). NOAA P3 TDR Data is courtsey of Dr. Paul Reasor, Dr. John Gamache, and Kelly Neighbour. As mentioned above, the code is adapted from the original work of Dr. Alex DesRosiers. 
 ___
 # Getting Started:
 ## Setting up the environment (CSU)
