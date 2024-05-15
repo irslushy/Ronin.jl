@@ -2,6 +2,12 @@
 ###Designed to somewhat emulate the julia version of the functionality in order to 
 ###Facilitate apples-to-apples comparisons of timing for the quality control process 
 
+###Currently only features functionality to compute features as input to model, 
+###as this is the most time-consuming part of the workflow and so should be informative 
+
+###NOTE: Currently only configured to work with the NOAA P3 TDR data - will work on 
+###Expanding this to the ELDORA dataset 
+
 import math
 import os, sys
 import numpy as np
@@ -33,36 +39,22 @@ from utils import *
 from os import listdir 
 import timeit 
 
+
+####Inputs: 
+####loc: path to cfradial file or directory of cfradials to process 
+####pattern:  secondary input to expand_path (unimportant)
+####vars_to_calc: List of features to calculate for each cfradial file.
+####Acceptable values: VEL, DBZ, SQI, AVEL, ADBZ, ASQI, SVEL, SDBZ, SSQI, PGG, RNG, NRG, AHT
+####Where VEL, DBZ, SQI are raw fields, the prefix A(VEL) indicates a spatial average, 
+####The prefix S(VEL) indicates a spatial standard deviation, PGG is probabilty of ground gate, 
+####RNG is range, NRG is range normalized by the height of the aircraft
 def load_single_netcdf_p3_new(loc, pattern = None, vars_to_calc=['VEL', 'DBZ', 'AVEL', 'ADBZ', 'SVEL', 'ISO', 'PGG', 'RG', 'NRG']):
-    # The first variable is the original (pre-clean) key
-    # The "result' variabe is the cleaned up field.
-    # To create Y, we compare the "key" to the "cleaned" variable.
-
-    # ALT and all the AVGs/SDs are added by the script.
-    # Note that once we compute Y, we remove the cleaned up field
-    #     because it isn't needed anymore for training or testing.
-
-
+   
     my_vars = [ 'VEL', 'DBZ', 'SQI']
     my_avgs = [ 'AVEL', 'ADBZ', 'ASQI' ]
     my_stds = [ 'SVEL', 'SDBZ', 'SSQI' ]
-    my_iso = ['ISO']
-    my_PGG = ['PGG']
-    my_RG = ['RG']
-    my_NRG = ['NRG']
-
 
     ISO_VAR = 'DBZ' 
-
-    alt_index = len(my_vars)        # Index of altitude
-    avg_offset = alt_index + 1      # Averages will be after the altitude
-    std_offset = avg_offset + len(my_avgs)
-    iso_index = std_offset + len(my_stds)
-    PGG_index = iso_index + 1
-    RG_index = PGG_index + 1
-    NRG_index = RG_index + 1
-
-
 
     #ELEV_index = NRG_index + 1
 
@@ -83,11 +75,6 @@ def load_single_netcdf_p3_new(loc, pattern = None, vars_to_calc=['VEL', 'DBZ', '
     ###ISAAC MODIFICATIONS 
 
     for path in file_list:
-
-        ALT_COMPLETE = False 
-
-        PGG_matrix = [[]]
-        ALT_matrix = [[]]
 
         nc_ds = nc4.Dataset(path, 'r')
 
@@ -170,7 +157,7 @@ def load_single_netcdf_p3_new(loc, pattern = None, vars_to_calc=['VEL', 'DBZ', '
                 X[i, range(ob_index, ob_index + one_d.size)] = one_d
                     
 
-            elif var == 'RG': 
+            elif var == 'RNG': 
                 rg = np.empty( (max_time, max_range) )
 
                 for time_idx in range(max_time):
@@ -216,12 +203,16 @@ def load_single_netcdf_p3_new(loc, pattern = None, vars_to_calc=['VEL', 'DBZ', '
 CASE_DIR = "../BENCHMARKING/NOAA_benchmark_cfrads/"
 CASES = [CASE_DIR]
 
+###Number of times to benchmark each file/directory 
 num_reps = 5
+###Features to calculate 
+vars_to_calc = ['SQI', 'AHT', 'SVEL', 'PGG', 'RNG', 'ISO']
+
 for path in CASES:
     curr_files = os.listdir(path)
 
     for file in curr_files: 
         ##Try each scan 10 times 
-        curr_timer = timeit.Timer(lambda: load_single_netcdf_p3_new(path + "/" + file, vars_to_calc=['ISO', 'AVEL', 'DBZ']))
+        curr_timer = timeit.Timer(lambda: load_single_netcdf_p3_new(path + "/" + file, vars_to_calc=vars_to_calc))
         curr_duration = curr_timer.timeit(num_reps)
-        print("AVERAGE TIME FOR THIS SCAN " + str(curr_duration / num_reps) + " s")
+        print("\nAVERAGE TIME FOR THIS SCAN " + str(curr_duration / num_reps) + " s\n")
