@@ -1,2 +1,2 @@
 ###Sample file containing configuration for model parameters to mine 
-NCP, AHT, STD(VV), PGG, RNG 
+NCP, AHT, STD(VV), PGG, RNG, ISO(DBZ) 

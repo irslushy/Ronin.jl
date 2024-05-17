@@ -590,15 +590,54 @@ module RadarQC
 
 
     """
+
     Function that takes in a given model, directory containing either cfradials or an already processed h5 file, 
-    a path to the configuration file, and a mode type ("C" for cfradials "H" for h5)
+    a path to the configuration file, and a mode type ("C" for cfradials "H" for h5) and returns a Julia DataFrame 
+    containing a variety of metrics about the model's performance on the specified set, including precision and recall scores. 
 
+    #Required arguments 
+    ```julia
+    model_path::String
+    ```
 
+    Path to input trained random forest model
 
+    ```julia
+    input_file_dir::String
+    ```
+
+    Path to input h5 file or directory of cfradial files to be processed
+
+    ```julia
+    config_file_path 
+    ```
+    
+    Path to configuration file containing information about what features to calculate 
+
+    #Optional Arguments 
+    
+    ```julia
+    mode::String = "C"
+    ```
+    Whether to process a directory of cfradial files ("C" mode) or simply utilize an already-processed h5 file ("H" mode) 
+
+    ```julia
+    write_out::Bool = false
+    ```
+    If in "C" mode, whether or not to write the resulting calculated features out to a file 
+
+    ```julia
+    output_file::String = "_.h5" 
+    ```
+
+    Location to write calculated output features to. 
+    
+    Also contains all keyword arguments for calculate_features 
+    
     """
     function evaluate_model(model_path::String, input_file_dir::String, config_file_path::String; mode="C",
                             HAS_MANUAL_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
-                            QC_variable="VG", remove_variable = "VV", replace_missing = false, write_out=false)
+                            QC_variable="VG", remove_variable = "VV", replace_missing = false, output_file = "_.h5", write_out=false)
         
 
         joblib = pyimport("joblib") 
@@ -606,7 +645,7 @@ module RadarQC
     
         if mode == "C"
 
-            X, Y = calculate_features(input_file_dir, config_file_path, output_file="junk.h5", HAS_MANUAL_QC = HAS_MANUAL_QC 
+            X, Y = calculate_features(input_file_dir, config_file_path, output_file=output_file, HAS_MANUAL_QC = HAS_MANUAL_QC 
                                         ; verbose=verbose, REMOVE_LOW_NCP=REMOVE_LOW_NCP, REMOVE_HIGH_PGG=REMOVE_HIGH_PGG, 
                                         QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
                                         write_out=write_out )

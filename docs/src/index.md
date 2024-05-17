@@ -6,6 +6,7 @@
 calculate_features(::String, ::Vector{String}, ::Vector{Matrix{Union{Missing, Float64}}}, ::String, ::Bool)
 calculate_features(::String, ::String, ::String, ::Bool)
 split_training_testing!
+evaluate_model
 ``` 
 
 ## Applying a trained model to data 
