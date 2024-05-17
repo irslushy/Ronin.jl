@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1715970561802,
+  "lastUpdate": 1715974691843,
   "repoUrl": "https://github.com/irslushy/RadarQC.jl",
   "entries": {
     "Julia benchmark result": [
@@ -90,6 +90,36 @@ window.BENCHMARK_DATA = {
             "value": 1676179893,
             "unit": "ns",
             "extra": "gctime=81517800\nmemory=2252675208\nallocs=19680334\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "irschluesche@gmail.com",
+            "name": "Isaac Schluesche",
+            "username": "irslushy"
+          },
+          "committer": {
+            "email": "irschluesche@gmail.com",
+            "name": "Isaac Schluesche",
+            "username": "irslushy"
+          },
+          "distinct": true,
+          "id": "fbc35de27b2e861fc0bec4a7d3175e129f5dcc02",
+          "message": "Added trained model and updated documentation",
+          "timestamp": "2024-05-17T13:30:51-06:00",
+          "tree_id": "e2480dfe5ef89d8b2c9b04306e310b993c4b6d47",
+          "url": "https://github.com/irslushy/RadarQC.jl/commit/fbc35de27b2e861fc0bec4a7d3175e129f5dcc02"
+        },
+        "date": 1715974691107,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "features/10",
+            "value": 1680252708,
+            "unit": "ns",
+            "extra": "gctime=82549734\nmemory=2252675208\nallocs=19680334\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
