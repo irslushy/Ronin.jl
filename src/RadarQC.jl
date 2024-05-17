@@ -12,6 +12,7 @@ module RadarQC
     using HDF5 
     using MLJ
     using PythonCall
+    using DataFrames
 
     export get_NCP, airborne_ht, prob_groundgate
     export calc_avg, calc_std, calc_iso, process_single_file 
@@ -611,21 +612,61 @@ module RadarQC
                                         write_out=write_out )
 
             
-            probs = curr_model.predict_proba(X) 
+            probs = pyconvert(Matrix{Float64}, curr_model.predict_proba(X))
 
         elseif mode == "H"
+
+            input_h5 = h5open(input_file_dir)
+
             X = input_h5["X"][:,:]
-            Y = input_h5["Y"][:]
+            Y = input_h5["Y"][:,:]
             
-            probs = curr_model.predict_proba(X) 
+            close(input_h5) 
+
+            probs = pyconvert(Matrix{Float64}, curr_model.predict_proba(X))
 
         else 
             print("ERROR: UNKNOWN MODE")
         end 
 
+        ###Now, iterate through probabilities and calculate predictions for each one. 
+        proba_seq = .1:.1:.9
+        met_probs = probs[:, 2]
 
-        ###in form of yhat, y where yhat is predictions and y is ground truth  
-        MLJ.confusion_matrix()
+
+        list_names = ["prob_level", "true_pos", "false_pos", "true_neg", "false_neg", "precision", "recall", "removal"]
+        for name in (Sybmol(_) for _ in list_names)
+            @eval $name = []
+        end 
+
+        for prob in proba_seq
+
+            met_predictions = met_probs .>= prob 
+
+            tpc = count(Y .== met_predictions[met_predictions .== 1])
+            fpc = count(Y .!= met_predictions[met_predictions .== 1])
+
+            push!(true_pos, tpc)
+            push!(false_pos, fpc)
+
+            tnc =  count(Y .== met_predictions[met_predictions .== 0])
+            fnc =  count(Y .!= met_predictions[met_predictions .== 0])
+
+            push!(true_neg, tnc)
+            push!(false_neg, fnc) 
+
+            push!(prob_level, prob) 
+
+            push!(precision, tpc / (tpc + fpc) )
+            push!(recall, tpc / (tpc + fnc))
+
+            ###Removal is the fraction of true negatives of total negatives 
+            push!(removal, tnc / (tnc + fpc))
+
+        ###I can likely make this better using some metaprogramming but it's fine for now 
+        return(DataFrame(prob_level=prob_level, true_pos=true_pos, false_pos=false_pos, true_neg=true_neg, false_neg=false_neg, precision=precision,
+                         recall=recall, removal=removal ))
+        end 
 
     end 
 
