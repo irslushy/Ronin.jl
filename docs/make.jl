@@ -5,6 +5,7 @@ makedocs(sitename="RadarQC.jl",
         modules= [RadarQC],
         pages = [
             "Home" => "index.md"
+            "Reference" => "api.md"
         ],
         format = Documenter.HTML(prettyurls = false))
 

@@ -473,7 +473,7 @@ module RadarQC
 
     # Optional Arguments 
     ```julia
-    VARIABLES_TO_QC::Vector{String}
+    VARIABLES_TO_QC::Vector{String} = ["ZZ", "VV"]
     ```
     List containing names of raw variables in the CFRadial to apply QC algorithm to. 
 
