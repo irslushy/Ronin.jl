@@ -43,8 +43,7 @@ REMOVE_HIGH_PGG::Bool = true
 
 ##Whether or not to replace a MISSING value with FILL in the spatial calculations 
 REPLACE_MISSING_WITH_FILL::Bool = false 
-###Side note - I do realize that Julia will return the last statement of a function automatically, 
-###but am including the return statement here for increased code clarity 
+
 
 ##Returns flattened version of NCP 
 function calc_ncp(data::NCDataset)
@@ -184,7 +183,7 @@ function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_we
         error("Weight matrix does not equal window size")
     end
 
-    if (REPLACE_MISSING_WITH_FILL)
+    if ( REPLACE_MISSING_WITH_FILL)
         var[map(ismissing, var)] .= FILL_VAL
     end 
 
@@ -197,7 +196,9 @@ function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_win
         error("Weight matrix does not equal window size")
     end
 
-    if (REPLACE_MISSING_WITH_FILL)
+    global REPLACE_MISSING_WITH_FILL
+
+    if ( REPLACE_MISSING_WITH_FILL)
         var[map(ismissing, var)] .= FILL_VAL
     end 
 
@@ -212,7 +213,7 @@ function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, w
         error("Weight matrix does not equal window size")
     end
 
-    if (REPLACE_MISSING_WITH_FILL)
+    if ( REPLACE_MISSING_WITH_FILL)
         var[map(ismissing, var)] .= FILL_VAL
     end 
 
@@ -421,6 +422,8 @@ function process_single_file(cfrad::NCDataset, argfile_path;
     
     if replace_missing
         global REPLACE_MISSING_WITH_FILL = true 
+    else 
+        global REPLACE_MISSING_WITH_FILL = false 
     end 
 
     valid_vars = keys(cfrad)
@@ -561,8 +564,13 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
     HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", remove_missing=true,
     replace_missing = false)
 
+
+    global REPLACE_MISSING_WITH_FILL
+
     if replace_missing
         global REPLACE_MISSING_WITH_FILL = true 
+    else 
+        global REPLACE_MISSING_WITH_FILL = false 
     end 
     
     ###Features array 

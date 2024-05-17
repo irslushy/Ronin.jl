@@ -93,7 +93,7 @@ module RadarQC
     """
     function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_MANUAL_QC::Bool; 
         verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false, QC_variable::String = "VG", remove_variable::String = "VV", 
-        replace_missing = false)
+        replace_missing = false, write_out=true)
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -163,13 +163,18 @@ module RadarQC
         ###1 indicates METEOROLOGICAL data that was retained during manual QC 
         
         ##Probably only want to write once, I/O is very slow 
-        println()
-        println("WRITING DATA TO FILE OF SHAPE $(size(X))")
-        X
-        println("X TYPE: $(typeof(X))")
-        write_dataset(fid, "X", X)
-        write_dataset(fid, "Y", Y)
-        close(fid)
+        if write_out
+            println()
+            println("WRITING DATA TO FILE OF SHAPE $(size(X))")
+            X
+            println("X TYPE: $(typeof(X))")
+            write_dataset(fid, "X", X)
+            write_dataset(fid, "Y", Y)
+            close(fid)
+        else
+            close(fid)
+            return X, Y
+        end 
 
     end 
 
@@ -189,7 +194,7 @@ module RadarQC
     function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
         ,output_file::String, HAS_MANUAL_QC::Bool; verbose=false,
          REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", 
-         replace_missing=false)
+         replace_missing=false, write_out=true)
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -259,13 +264,18 @@ module RadarQC
         ###1 indicates METEOROLOGICAL data that was retained during manual QC 
         
         ##Probably only want to write once, I/O is very slow 
-        println()
-        println("WRITING DATA TO FILE OF SHAPE $(size(X))")
-        X
-        println("X TYPE: $(typeof(X))")
-        write_dataset(fid, "X", X)
-        write_dataset(fid, "Y", Y)
-        close(fid)
+        if write_out
+            println()
+            println("WRITING DATA TO FILE OF SHAPE $(size(X))")
+            X
+            println("X TYPE: $(typeof(X))")
+            write_dataset(fid, "X", X)
+            write_dataset(fid, "Y", Y)
+            close(fid)
+        else
+            close(fid)
+            return X, Y
+        end 
 
     end 
 
@@ -326,7 +336,7 @@ module RadarQC
         
         new_model = joblib.load(model_path)
         predictions = pyconvert(Vector{Float64}, new_model.predict(X))
-        return((Y, predictions))
+        return((predictions, Y))
     end 
 
     ###TODO: Fix arguments etc 
@@ -337,6 +347,7 @@ module RadarQC
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC = ["ZZ", "VV"], QC_suffix = "_QC", indexer_var="VV")
         
         joblib = pyimport("joblib") 
+        new_model = joblib.load(model_path)
 
         paths = Vector{String}() 
         if isdir(file_path) 
@@ -359,7 +370,6 @@ module RadarQC
             println("\r\nCompleted in $(time()-starttime ) seconds")
             ##Load saved RF model 
             ##assume that default SYMBOL for saved model is savedmodel
-            new_model = joblib.load(model_path)
             predictions = pyconvert(Vector{Float64}, new_model.predict(X))
 
             ##QC each variable in VARIALBES_TO_QC
@@ -571,6 +581,51 @@ module RadarQC
                 symlink((path * file), TESTING_PATH * file)
             end
         end 
+
+    end 
+
+
+
+
+
+    """
+    Function that takes in a given model, directory containing either cfradials or an already processed h5 file, 
+    a path to the configuration file, and a mode type ("C" for cfradials "H" for h5)
+
+
+
+    """
+    function evaluate_model(model_path::String, input_file_dir::String, config_file_path::String; mode="C",
+                            HAS_MANUAL_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
+                            QC_variable="VG", remove_variable = "VV", replace_missing = false, write_out=false)
+        
+
+        joblib = pyimport("joblib") 
+        curr_model = joblib.load(model_path)
+    
+        if mode == "C"
+
+            X, Y = calculate_features(input_file_dir, config_file_path, output_file="junk.h5", HAS_MANUAL_QC = HAS_MANUAL_QC 
+                                        ; verbose=verbose, REMOVE_LOW_NCP=REMOVE_LOW_NCP, REMOVE_HIGH_PGG=REMOVE_HIGH_PGG, 
+                                        QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
+                                        write_out=write_out )
+
+            
+            probs = curr_model.predict_proba(X) 
+
+        elseif mode == "H"
+            X = input_h5["X"][:,:]
+            Y = input_h5["Y"][:]
+            
+            probs = curr_model.predict_proba(X) 
+
+        else 
+            print("ERROR: UNKNOWN MODE")
+        end 
+
+
+        ###in form of yhat, y where yhat is predictions and y is ground truth  
+        MLJ.confusion_matrix()
 
     end 
 
