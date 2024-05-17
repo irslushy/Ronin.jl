@@ -21,7 +21,7 @@ module RadarQC
     export split_training_testing! 
     export train_model 
     export QC_scan 
-    export evaluate_model 
+    export predict_with_model, evaluate_model 
 
 
     """
@@ -182,16 +182,81 @@ module RadarQC
 
 
     """
-    Function to process a set of cfradial files and produce a set of input features for training/evaluating a model 
-        input_loc: cfradial files are specified by input_loc - can be either a file or a directory
-        tasks: Features to be calculated
-        weight_matrixes: Vector of matrixes that specify size and weights for each spatial variable
-        output_file : Location to output the resulting dataset
 
-        Keyword Arguments: 
-        remove_variable - variable in CFRadial file used to determine where 'missing' gates are. 
-                          these gates will be removed from the outputted features so that the model 
-                          is not trained on missing data
+    Function to process a set of cfradial files and produce input features for training/evaluating a model. 
+        Allows for user-specified tasks and weight matrices, otherwise the same as above.  
+
+    # Required arguments 
+
+    ```julia
+    input_loc::String
+    ```
+    
+    Path to input cfradial or directory of input cfradials 
+
+    ```julia
+    tasks::Vector{String}
+    ```
+
+    Vector containing the features to be calculated for each cfradial. Example `[DBZ, ISO(DBZ)]`
+
+    ```julia
+    weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
+    ```
+
+    For each task, a weight matrix specifying how much each gate in a spatial calculation will be given. 
+    Required to be the same size as `tasks`
+
+    ```julia
+    output_file::String 
+    ```
+    
+    Location to output the calculated feature data to. 
+
+    ```julia
+    HAS_MANUAL_QC::Bool
+    ```
+    Specifies whether or not the file(s) have already undergone a manual QC procedure. 
+    If true, function will also output a `Y` array used to verify where manual QC removed gates. This array is
+    formed by considering where gates with non-missing data in raw scans (specified by `remove_variable`) are
+    set to missing after QC is performed. 
+
+    # Optional keyword arguments 
+
+    ```julia
+    verbose::Bool
+    ```
+    If true, will print out timing information as each file is processed 
+
+    ```julia
+    REMOVE_LOW_NCP::Bool
+    ```
+
+    If true, will ignore gates with Normalized Coherent Power/Signal Quality Index below a threshold specified in RQCFeatures.jl
+
+    ```julia
+    REMOVE_HIGH_PGG::Bool
+    ```
+
+    If true, will ignore gates with Probability of Ground Gate (PGG) values at or above a threshold specified in RQCFeatures.jl 
+
+    ```julia
+    QC_variable::String
+    ```
+    Name of variable in input NetCDF files that has been quality-controlled. 
+
+    ```julia
+    remove_variable::String
+    ```
+
+    Name of a raw variable in input NetCDF files. Used to determine where missing data exists in the input sweeps. 
+    Data at these locations will be removed from the outputted features. 
+
+    ```
+    replace_missing 
+    ```
+    Whether or not to replace MISSING values with FILL_VAL in spatial parameter calculations
+    Default value: False 
     """
     function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
         ,output_file::String, HAS_MANUAL_QC::Bool; verbose=false,
@@ -282,7 +347,35 @@ module RadarQC
     end 
 
 
+    """
 
+    Function to train a random forest model using a precalculated set of input and output features (usually output from 
+    `calculate_features`). Returns nothing. 
+
+    # Required arguments 
+    ```julia
+    input_h5::String
+    ```
+    Location of input features/targets. Input features are expected to have the name "X", and targets the name "Y". This should be 
+    taken care of automatically if they are outputs from `calculate_features`
+
+    ```julia
+    model_location::String 
+    ```
+    Path to save the trained model out to. Typically should end in `.joblib`
+    
+    # Optional keyword arguments 
+    ```julia
+    verify::Bool = false 
+    ```
+    Whether or not to output a separate .h5 file containing the trained models predictions on the training set 
+    (`Y_PREDICTED`) as well as the targets for the training set (`Y_ACTUAL`) 
+
+    ```julia
+    verify_out::String="model_verification.h5"
+    ```
+    If `verify`, the location to output this verification to. 
+    """
     function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5" )
 
 
@@ -329,7 +422,22 @@ module RadarQC
     end     
 
 
-    ###Simple function to process an h5 file with already processed features using a given model and return its predictions 
+    """
+    Simple function that opens a given h5 file with feature data and applies a specific model to it. 
+    Returns a tuple of `predictions, targets`. 
+
+    # Required arguments 
+    ```julia
+    model_path::String 
+    ```
+    Location of trained RF model (saved in joblib file format) 
+
+    ```julia
+    input_h5::String 
+    ```
+    Location of h5 file containing input features. 
+
+    """
     function predict_with_model(model_path::String, input_h5::String)
         joblib = pyimport("joblib")
         input_h5 = h5open(input_h5)
@@ -344,9 +452,46 @@ module RadarQC
     ###TODO: Fix arguments etc 
     ###Can have one for a single file and one for a directory 
     """
-    Primary function to apply a trained RF model to a cfradial scan 
+    Primary function to apply a trained RF model to certain raw fields of a cfradial scan. Values determined to be 
+    non-meteorological by the RF model will be replaced with `Missing`
+
+    # Required Arguments 
+    ```julia
+    file_path::String 
+    ```
+    Location of input cfradial or directory of cfradials one wishes to apply QC to 
+
+    ```julia 
+    config_file_path::String 
+    ```
+    Location of config file containing features to calculate as inputs to RF model 
+
+    ```julia
+    model_path::String 
+    ```
+    Location of trained RF model (in joblib file format) 
+
+    # Optional Arguments 
+    ```julia
+    VARIABLES_TO_QC::Vector{String}
+    ```
+    List containing names of raw variables in the CFRadial to apply QC algorithm to. 
+
+    ```julia
+    QC_suffix::String = "_QC"
+    ```
+    Used for naming the QC-ed variables in the modified CFRadial file. Field name will be QC_suffix appended to the raw field. 
+    Example: `DBZ_QC`
+
+    ```julia
+    indexer_var::String = "VV"
+    ```
+    Variable used to determine what gates are considered "missing" in the raw moments. QC will not 
+    be applied to these gates, they will simply remain missing. 
+
     """
-    function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC = ["ZZ", "VV"], QC_suffix = "_QC", indexer_var="VV")
+    function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
+                     QC_suffix::String = "_QC", indexer_var::String="VV")
         
         joblib = pyimport("joblib") 
         new_model = joblib.load(model_path)
@@ -428,25 +573,31 @@ module RadarQC
 
 
 
-        """
+    """
     Function to split a given directory or set of directories into training and testing files using the configuration
-    described in DesRosiers and Bell 2023 
+    described in DesRosiers and Bell 2023. **This function assumes that input directories only contain cfradial files 
+    that follow standard naming conventions, and are thus implicitly chronologically ordered.** The function operates 
+    by first dividing file names into training and testing sets following an 80/20 training/testing split, and subsequently
+    softlinking each file to the training and testing directories. Attempts to avoid temporal autocorrelation while maximizing 
+    variance by dividing each case into several different training/testing sections. 
 
-    Arguments: 
-        DIR_PATHS: Vector{String} consisting of directory or list of directories containing input CFRadial files 
-        TRAINING_PATH: String - path to directory where training files will be linked 
-        TESTING_PATH: String - path to directory where testing files will be linked
+    # Required Arguments: 
 
-    Configuration info: 80/20 Training/Testing split, with testing cases taken from the beginning, middle, and end of 
-        EACH case in DIR_PATHS. The function calculates a number of testing scans and divides it up amongst the cases, 
-        so each case will be equally represented in the testing dataset. 
+    ```julia
+    DIR_PATHS::Vector{String}
+    ```
+    List of directories containing cfradials to be used for model training/testing. Useful if input data is split 
+    into several different cases. 
 
-        In the example given in the paper, there are 4 cases, and an 80/20 split gives a total number of testing scans 
-        of 356. Divided by 4, this results in 89 scans from each case. 
+    ```julia
+    TRAINING_PATH::String 
+    ```
+    Directory to softlink files designated for training into. 
 
-        Details about rounding are contained within the function
-
-    IMPORTANT: ASSUMES SCANS FOLLOW CFRAD NAMING CONVENTIONS AND ARE THEREFORE LISTED CHRONOLOGICALLY
+    ```julia
+    TESTING_PATH::String 
+    ```
+    Directory to softlink files designated for testing into. 
     """
     function split_training_testing!(DIR_PATHS::Vector{String}, TRAINING_PATH::String, TESTING_PATH::String)
 
@@ -596,7 +747,7 @@ module RadarQC
     a path to the configuration file, and a mode type ("C" for cfradials "H" for h5) and returns a Julia DataFrame 
     containing a variety of metrics about the model's performance on the specified set, including precision and recall scores. 
 
-    #Required arguments 
+    # Required arguments 
     ```julia
     model_path::String
     ```
@@ -615,7 +766,7 @@ module RadarQC
     
     Path to configuration file containing information about what features to calculate 
 
-    #Optional Arguments 
+    # Optional Arguments 
     
     ```julia
     mode::String = "C"
