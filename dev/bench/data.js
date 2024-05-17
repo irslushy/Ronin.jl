@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1715974691843,
+  "lastUpdate": 1715974809261,
   "repoUrl": "https://github.com/irslushy/RadarQC.jl",
   "entries": {
     "Julia benchmark result": [
@@ -120,6 +120,36 @@ window.BENCHMARK_DATA = {
             "value": 1680252708,
             "unit": "ns",
             "extra": "gctime=82549734\nmemory=2252675208\nallocs=19680334\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "irschluesche@gmail.com",
+            "name": "Isaac Schluesche",
+            "username": "irslushy"
+          },
+          "committer": {
+            "email": "irschluesche@gmail.com",
+            "name": "Isaac Schluesche",
+            "username": "irslushy"
+          },
+          "distinct": true,
+          "id": "ab77476d02b19903620a32d6db8ef9480c41ba87",
+          "message": "Remove unused model",
+          "timestamp": "2024-05-17T13:33:10-06:00",
+          "tree_id": "acaa30cdfc1ff39bb9b9d8c7ff6723ebfaea2b79",
+          "url": "https://github.com/irslushy/RadarQC.jl/commit/ab77476d02b19903620a32d6db8ef9480c41ba87"
+        },
+        "date": 1715974808643,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "features/10",
+            "value": 1718206008,
+            "unit": "ns",
+            "extra": "gctime=89076573\nmemory=2252675208\nallocs=19680334\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
