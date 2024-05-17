@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1715790597001,
+  "lastUpdate": 1715904858421,
   "repoUrl": "https://github.com/irslushy/RadarQC.jl",
   "entries": {
     "Julia benchmark result": [
@@ -30,6 +30,36 @@ window.BENCHMARK_DATA = {
             "value": 1731513818,
             "unit": "ns",
             "extra": "gctime=80728897\nmemory=2252675208\nallocs=19680334\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "irschluesche@gmail.com",
+            "name": "Isaac Schluesche",
+            "username": "irslushy"
+          },
+          "committer": {
+            "email": "irschluesche@gmail.com",
+            "name": "Isaac Schluesche",
+            "username": "irslushy"
+          },
+          "distinct": true,
+          "id": "03647a5cb85de7976cb7be923bef95686b8621a9",
+          "message": "Bug fixes and further parameter updates",
+          "timestamp": "2024-05-16T18:07:31-06:00",
+          "tree_id": "036ef5555bb1f6c9be6f1f215c489f2a14a01a03",
+          "url": "https://github.com/irslushy/RadarQC.jl/commit/03647a5cb85de7976cb7be923bef95686b8621a9"
+        },
+        "date": 1715904857686,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "features/10",
+            "value": 1722270593,
+            "unit": "ns",
+            "extra": "gctime=86567001\nmemory=2252675208\nallocs=19680334\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
