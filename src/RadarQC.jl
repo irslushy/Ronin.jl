@@ -21,6 +21,7 @@ module RadarQC
     export split_training_testing! 
     export train_model 
     export QC_scan 
+    export evaluate_model 
 
 
     """
@@ -631,7 +632,7 @@ module RadarQC
     ```
 
     Location to write calculated output features to. 
-    
+
     Also contains all keyword arguments for calculate_features 
     
     """
