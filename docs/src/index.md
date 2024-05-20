@@ -1,13 +1,14 @@
 # Basic Workflow Walkthrough 
-RadarQC is a package that utilizes a methodology developed by [Dr. Alex DesRosiers and Dr. Michael Bell](https://journals.ametsoc.org/view/journals/aies/aop/AIES-D-23-0064.1/AIES-D-23-0064.1.xml) to remove non-meteorological gates from Doppler radar scans by leveraging machine learning techniques. In its current form, it contains functionality to derive a set of features from input radar data, use these features to train a Random Forest classification model, and apply this model to the raw fields contained within the radar scans. It also has some model evaluation ability. The beginning of this guide will walk through a basic workflow to train a model starting from scratch.
+RadarQC is a package that utilizes a methodology developed by [Dr. Alex DesRosiers and Dr. Michael Bell](https://journals.ametsoc.org/view/journals/aies/aop/AIES-D-23-0064.1/AIES-D-23-0064.1.xml) to remove non-meteorological gates from Doppler radar scans by leveraging machine learning techniques. In its current form, it contains functionality to derive a set of features from input radar data, use these features to train a Random Forest classification model, and apply this model to the raw fields contained within the radar scans. It also has some model evaluation ability. The beginning of this guide will walk through a basic workflow to train a model starting from scratch.  
 
-<br>
+  
 
-___
+
+---
 ## Preparing input data 
-___ 
+---
 
-</br>The first step in the process is to split our data so that some of it may be utilized for model training and the other portion for model testing. It's important to keep the two sets separate, otherwise the model may overfit. 
+The first step in the process is to split our data so that some of it may be utilized for model training and the other portion for model testing. It's important to keep the two sets separate, otherwise the model may overfit. 
 
 The basic requirement here is to have a directory or directories of cfradial scans, and two directories to put training and testing files, respectively. Make sure that no other files are present in these directories. To do this, the [`split_training_testing!`](https://github.com/irslushy/RadarQC.jl/blob/52d7f15ddb791bfef4341ff3e9d49fb1fb630049/src/RadarQC.jl#L576-L601) function will be used. For example, if one had two cases of radar data, located in `./CASE1/` and `./CASE2/` and wanted to split into `./TRAINING` and `./TESTING`, execute the command 
 ```julia

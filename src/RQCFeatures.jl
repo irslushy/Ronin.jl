@@ -179,9 +179,6 @@ end
 
 ##Calculate the windowed standard deviation of a given variablevariable 
 function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_weights, window = std_window)
-    if size(weights) != window
-        error("Weight matrix does not equal window size")
-    end
 
     if ( REPLACE_MISSING_WITH_FILL)
         var[map(ismissing, var)] .= FILL_VAL
@@ -192,26 +189,16 @@ end
 
 ##Calculate the windowed standard deviation of a given variablevariable 
 function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_window)
-    if size(weights) != window
-        error("Weight matrix does not equal window size")
-    end
-
     global REPLACE_MISSING_WITH_FILL
 
     if ( REPLACE_MISSING_WITH_FILL)
         var[map(ismissing, var)] .= FILL_VAL
     end 
 
-    ###Replace mising values with FILL_VAL
-
     mapwindow((x) -> _weighted_func(x, weights, std), var, window, border=Fill(missing))
 end 
 
 function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, window = avg_window)
-
-    if size(weights) != window
-        error("Weight matrix does not equal window size")
-    end
 
     if ( REPLACE_MISSING_WITH_FILL)
         var[map(ismissing, var)] .= FILL_VAL
@@ -221,10 +208,6 @@ function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, w
 end
 
 function calc_avg(var::Matrix{}; weights = avg_weights, window = avg_window)
-
-    if size(weights) != window
-        error("Weight matrix does not equal window size")
-    end
 
     if (REPLACE_MISSING_WITH_FILL)
         var[map(ismissing, var)] .= FILL_VAL
@@ -388,20 +371,63 @@ end
     Driver function that calculates a set of features from a single CFRadial file. Features are 
     specified in file located at argfile_path. 
 
-    IMPLICITLY specifies weight matrixes (already in calc function args) 
-    
-    If the file has already been manually QCed, set
-    HAS_MANUAL_QC to true, and an additional Y array will be returned containing "1" if a datapoint
-    was retained in manual QC and "0" if it was removed. 
-    NOTE ARGUMENTS remove_variable and QC_variable . The gates retained after manual QC will be obtained 
-    by determining which are present in remove_variable but are NOT PRESENT in QC_variable 
-        
-    Also included are flags to remove datapoints 
-    with low Normalized Coherent Power (NCP) and high Probability of Ground (PGG). Finally, the 
-    remove_variable argument specifies which field will be used to determine where "missing" data exists 
-    and will subsequently be removed from the returned dataset. 
+    Will return a tuple of (X, Y, indexer) where X is the features matrix,  `Y`, a matrix containing the verification 
+    - where human QC determined the gate was meteorological (value of 1), or non-meteorological (value of 0), 
+    and `indexer` contains a vector of booleans describing which gates met basic quality control thresholds 
+    and thus are represented in the X and Y matrixes
 
-    Returns: 
+    Weight matrixes are specified in file header, or passed as explicit argument. 
+
+    # Required arguments 
+
+    ```julia 
+    cfrad::NCDataset 
+    ```
+    Input `NCDataset` containing radar scan variables 
+
+    ```julia 
+    argfile_path::String 
+    ```
+    Path to file contaning config/task information. 
+
+    # Optional keyword arguments 
+
+    ```julia 
+    HAS_MANUAL_QC::Bool = false
+    ```
+    If the scan has already had a human apply quality control to it, set to `true`. Otherwise, `false`
+
+    ```julia 
+    REMOVE_LOW_NCP::Bool = false
+    ```
+    Whether or not to ignore gates that do not meet a minimum NCP/SQI threshold. If `true`, these gates will be
+    set to `false` in `indexer`, and features/verification will not be calculated for them. 
+
+    ```julia 
+    REMOVE_HIGH_PGG::Bool = false
+    ```
+    Whether or not to ignore gates that exceed a given Probability of Ground Gate(PGG) threshold. If `true`, these gates will be
+    set to `false` in `indexer`, and features/verification will not be calculated for them. 
+
+    ```julia 
+    QC_variable::String = "VG"
+    ```
+    Name of a variable in input CFRadial file that has had QC applied to it already. Used to calculate verification `Y` matrix. 
+
+    ```julia 
+    remove_variable::String = "VV" 
+    ```
+    Name of raw variable in input CFRadial file that will be used to determine where `missing` gates exist in the sweep.
+
+    ```julia 
+    replace_missing::Bool = false
+    ```
+    For spatial parameters, whether or not to replace `missings` values with `FILL_VAL`
+
+    --- 
+
+    # Returns: 
+
         -X: Array that is dimensioned (num_gates x num_features) where num_gates is the number of valid 
             (non-missing, meeting NCP/PGG thresholds) the function finds, and num_features is the 
             number of features specified in the argument file to calculate. 
@@ -413,9 +439,9 @@ end
                   where in the scan features valid data and where does not. 
 
 """
-function process_single_file(cfrad::NCDataset, argfile_path; 
-    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV",
-    replace_missing=false)
+function process_single_file(cfrad::NCDataset, argfile_path::String; 
+    HAS_MANUAL_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
+     QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false)
 
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
     #println("\r\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")

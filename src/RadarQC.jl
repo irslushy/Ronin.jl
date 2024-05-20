@@ -489,9 +489,17 @@ module RadarQC
     Variable used to determine what gates are considered "missing" in the raw moments. QC will not 
     be applied to these gates, they will simply remain missing. 
 
+    ```julia
+    decision_threshold::Float64 = .5
+    ```
+    Used to leverage probablistic nature of random forest methodology. When the model has a greater than `decision_threshold`
+    level confidence that a gate is meteorological data, it will be assigned as such. Anything at or below this confidence threshold
+    will be assigned non-meteorological. At least in the ELDORA case, aggressive thresholds (.8 and above) have been found to maintain 
+    >92% of the meteorological data while removing >99% of non-meteorological gates. 
+
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
-                     QC_suffix::String = "_QC", indexer_var::String="VV")
+                     QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Float64 = .5)
         
         joblib = pyimport("joblib") 
         new_model = joblib.load(model_path)
@@ -517,7 +525,9 @@ module RadarQC
             println("\r\nCompleted in $(time()-starttime ) seconds")
             ##Load saved RF model 
             ##assume that default SYMBOL for saved model is savedmodel
-            predictions = pyconvert(Vector{Float64}, new_model.predict(X))
+            ##For binary classifications, 1 will be at index 2 in the predictions matrix 
+            met_predictions = pyconvert(Matrix{Float64}, new_model.predict_proba(X))[:, 2]
+            predictions = met_predictions .> decision_threshold
 
             ##QC each variable in VARIALBES_TO_QC
             for var in VARIABLES_TO_QC
@@ -534,12 +544,12 @@ module RadarQC
                 )
 
                 ##Set MISSINGS to fill value in current field
-                QCED_FIELDS[[ismissing(x) for x in QCED_FIELDS]] .= FILL_VAL  
-                initial_count = count(QCED_FIELDS .!== FILL_VAL )
+                
+                initial_count = count(.!map(ismissing, QCED_FIELDS))
                 ##Apply predictions from model 
                 ##If model predicts 1, this indicates a prediction of meteorological data 
-                QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : FILL_VAL, enumerate(QCED_FIELDS))
-                final_count = count(QCED_FIELDS .!== FILL_VAL)
+                QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : missing, enumerate(QCED_FIELDS))
+                final_count = count(.!map(ismissing, QCED_FIELDS))
                 
                 ###Need to reconstruct original 
                 NEW_FIELD = NEW_FIELD[:]
