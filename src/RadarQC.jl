@@ -21,7 +21,7 @@ module RadarQC
     export split_training_testing! 
     export train_model 
     export QC_scan 
-    export predict_with_model, evaluate_model 
+    export predict_with_model, evaluate_model, get_feature_importance
 
 
     """
@@ -797,7 +797,6 @@ module RadarQC
     Also contains all keyword arguments for calculate_features 
     
     """
-
     function evaluate_model(model_path::String, input_file_dir::String, config_file_path::String; mode="C",
         HAS_MANUAL_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
         QC_variable="VG", remove_variable = "VV", replace_missing = false, output_file = "_.h5", write_out=false)
@@ -871,5 +870,79 @@ module RadarQC
         return(DataFrame(prob_level=prob_level, true_pos=true_pos, false_pos=false_pos, true_neg=true_neg, false_neg=false_neg, precision=prec,
             recall=rec, removal=removal ))
      end 
+
+
+
+     """
+     # Uses L1 regression with a variety of λ penalty values to determine the most useful features for
+     input to the random forest model. 
+     ---
+     # Required Input
+     ---
+     ```julia
+     input_file_path::String 
+     ```
+     Path to .h5 file containing model training features under `["X"]` parameter, and model targets under `["Y"]` parameter. 
+     Also expects the h5 file to contain an attribute known as `Parameters` containing abbreviations for the feature types 
+
+    ```julia 
+    λs::Vector{Float64}
+    ```
+    Vector of values used to vary the strength of the penalty term in the regularization. 
+    ---
+    # Optional Keyword Arguments 
+    ---
+    ```julia
+    pred_threshold::Float64
+    ```
+    Minimum cofidence level for binary classifier when predicting 
+    ---
+    #Returns
+    ---
+    Returns a DataFrame with each row containing info about a regression for a specific λ, the values of the regression coefficients 
+        for each input feature, and the Root Mean Square Error of the resultant regression. 
+     """
+     function get_feature_importance(input_file_path::String, λs::Vector{Float64}; pred_threshold::Float64 = .5)
+
+        training_data = h5open(input_file_path)
+        
+        ###Standardize features to expedite regression convergence 
+        features = mapslices(standardize, training_data["X"][:,:], dims=1)
+        ###Flatten targets and convert to categorical datatime 
+        targets = categorical(training_data["Y"][:,:][:])
+        targets_raw = training_data["Y"][:, :][:]
+        params = attrs(training_data)["Parameters"]
+
+        close(training_data)
+
+        coef_values = Dict(param => [] for param in params)
+        coef_values["λ"] = λs 
+        rmses = [] 
+
+        for λ in λs
+
+            mdl = LogisticClassifier(;lambda=λ, penalty=:l1)
+            mach = machine(mdl, MLJ.table(features), targets[:])
+            fit!(mach)
+            coefs = fitted_params(mach).coefs 
+
+            y_pred = predict(mach, features)
+            results = pdf(y_pred, [0, 1])
+            met_predictions = map(x -> x > pred_threshold ? 0 : 1, results[:, 1])
+
+            push!(rmses, rmse(met_predictions, targets_raw))
+
+            for (i, param) in enumerate(params)
+                push!(coef_values[param], coefs[i][2])
+            end 
+        
+            
+        end 
+
+        coef_values["rmse"] = rmses
+        return(DataFrame(coef_values))
+
+    end 
+
 
 end
