@@ -876,32 +876,42 @@ module RadarQC
      """
      # Uses L1 regression with a variety of λ penalty values to determine the most useful features for
      input to the random forest model. 
+
      ---
+
      # Required Input
+
      ---
+
      ```julia
      input_file_path::String 
      ```
+
      Path to .h5 file containing model training features under `["X"]` parameter, and model targets under `["Y"]` parameter. 
      Also expects the h5 file to contain an attribute known as `Parameters` containing abbreviations for the feature types 
 
     ```julia 
     λs::Vector{Float64}
     ```
+
     Vector of values used to vary the strength of the penalty term in the regularization. 
     ---
+
     # Optional Keyword Arguments 
+
     ---
+
     ```julia
     pred_threshold::Float64
     ```
+
     Minimum cofidence level for binary classifier when predicting 
     ---
     #Returns
     ---
     Returns a DataFrame with each row containing info about a regression for a specific λ, the values of the regression coefficients 
         for each input feature, and the Root Mean Square Error of the resultant regression. 
-     """
+    """
      function get_feature_importance(input_file_path::String, λs::Vector{Float64}; pred_threshold::Float64 = .5)
 
         training_data = h5open(input_file_path)
