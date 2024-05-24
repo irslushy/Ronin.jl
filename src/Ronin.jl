@@ -798,77 +798,77 @@ module Ronin
     
     """
     function evaluate_model(model_path::String, input_file_dir::String, config_file_path::String; mode="C",
-                            HAS_MANUAL_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
-                            QC_variable="VG", remove_variable = "VV", replace_missing = false, output_file = "_.h5", write_out=false)
-        
+        HAS_MANUAL_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
+        QC_variable="VG", remove_variable = "VV", replace_missing = false, output_file = "_.h5", write_out=false)
 
         joblib = pyimport("joblib") 
         curr_model = joblib.load(model_path)
-    
-        if mode == "C"
 
-            X, Y = calculate_features(input_file_dir, config_file_path, output_file=output_file, HAS_MANUAL_QC = HAS_MANUAL_QC 
-                                        ; verbose=verbose, REMOVE_LOW_NCP=REMOVE_LOW_NCP, REMOVE_HIGH_PGG=REMOVE_HIGH_PGG, 
-                                        QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
-                                        write_out=write_out )
+    if mode == "C"
 
-            
-            probs = pyconvert(Matrix{Float64}, curr_model.predict_proba(X))
-
-        elseif mode == "H"
-
-            input_h5 = h5open(input_file_dir)
-
-            X = input_h5["X"][:,:]
-            Y = input_h5["Y"][:,:]
-            
-            close(input_h5) 
-
-            probs = pyconvert(Matrix{Float64}, curr_model.predict_proba(X))
-
-        else 
-            print("ERROR: UNKNOWN MODE")
-        end 
-
-        ###Now, iterate through probabilities and calculate predictions for each one. 
-        proba_seq = .1:.1:.9
-        met_probs = probs[:, 2]
+        X, Y = calculate_features(input_file_dir, config_file_path, output_file=output_file, HAS_MANUAL_QC = HAS_MANUAL_QC 
+                        ; verbose=verbose, REMOVE_LOW_NCP=REMOVE_LOW_NCP, REMOVE_HIGH_PGG=REMOVE_HIGH_PGG, 
+                        QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
+                        write_out=write_out )
 
 
-        list_names = ["prob_level", "true_pos", "false_pos", "true_neg", "false_neg", "precision", "recall", "removal"]
-        for name in (Sybmol(_) for _ in list_names)
-            @eval $name = []
-        end 
+        probs = pyconvert(Matrix{Float64}, curr_model.predict_proba(X))
 
-        for prob in proba_seq
+    elseif mode == "H"
 
-            met_predictions = met_probs .>= prob 
+        input_h5 = h5open(input_file_dir)
 
-            tpc = count(Y .== met_predictions[met_predictions .== 1])
-            fpc = count(Y .!= met_predictions[met_predictions .== 1])
+        X = input_h5["X"][:,:]
+        Y = input_h5["Y"][:,:]
 
-            push!(true_pos, tpc)
-            push!(false_pos, fpc)
+        close(input_h5) 
 
-            tnc =  count(Y .== met_predictions[met_predictions .== 0])
-            fnc =  count(Y .!= met_predictions[met_predictions .== 0])
+        probs = pyconvert(Matrix{Float64}, curr_model.predict_proba(X))
 
-            push!(true_neg, tnc)
-            push!(false_neg, fnc) 
+    else 
+        print("ERROR: UNKNOWN MODE")
+    end 
 
-            push!(prob_level, prob) 
+    ###Now, iterate through probabilities and calculate predictions for each one. 
+    proba_seq = .1:.1:.9
+    met_probs = probs[:, 2]
 
-            push!(precision, tpc / (tpc + fpc) )
-            push!(recall, tpc / (tpc + fnc))
 
-            ###Removal is the fraction of true negatives of total negatives 
-            push!(removal, tnc / (tnc + fpc))
+    list_names = ["prob_level", "true_pos", "false_pos", "true_neg", "false_neg", "prec", "rec", "removal"]
+    for name in (Symbol(_) for _ in list_names)
+        @eval $name = []
+    end 
+
+    for prob in proba_seq
+
+        met_predictions = met_probs .>= prob 
+        print(length(met_predictions))
+        print(length(Y))
+        tpc = count(Y[met_predictions .== 1] .== met_predictions[met_predictions .== 1])
+        fpc = count(Y[met_predictions .== 1] .!= met_predictions[met_predictions .== 1])
+
+        push!(true_pos, tpc)
+        push!(false_pos, fpc)
+
+        tnc =  count(Y[met_predictions .== 0] .== met_predictions[met_predictions .== 0])
+        fnc =  count(Y[met_predictions .== 0] .!= met_predictions[met_predictions .== 0])
+
+        push!(true_neg, tnc)
+        push!(false_neg, fnc) 
+
+        push!(prob_level, prob) 
+
+        push!(prec, tpc / (tpc + fpc) )
+        push!(rec, tpc / (tpc + fnc))
+
+        ###Removal is the fraction of true negatives of total negatives 
+        push!(removal, tnc / (tnc + fpc))
 
         ###I can likely make this better using some metaprogramming but it's fine for now 
-        return(DataFrame(prob_level=prob_level, true_pos=true_pos, false_pos=false_pos, true_neg=true_neg, false_neg=false_neg, precision=precision,
-                         recall=recall, removal=removal ))
-        end 
 
-    end 
+        end 
+        return(DataFrame(prob_level=prob_level, true_pos=true_pos, false_pos=false_pos, true_neg=true_neg, false_neg=false_neg, precision=prec,
+            recall=rec, removal=removal ))
+     end 
 
 end
