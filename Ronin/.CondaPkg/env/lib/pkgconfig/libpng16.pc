@@ -1,0 +1,12 @@
+prefix=/Users/ischluesche/Documents/Grad_School/Research/RadarQC/RadarQC/.CondaPkg/env
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include/libpng16
+
+Name: libpng
+Description: Loads and saves PNG files
+Version: 1.6.42
+Requires.private: zlib
+Libs: -L${libdir} -lpng16
+Libs.private: -lz 
+Cflags: -I${includedir}

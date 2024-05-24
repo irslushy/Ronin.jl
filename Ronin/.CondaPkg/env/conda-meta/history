@@ -1,0 +1,87 @@
+==> 2024-02-06 12:16:26 <==
+# cmd: /Users/ischluesche/.julia/artifacts/5767a45b62528e0be4c40dbae502ad3e132f1d62/bin/micromamba -r /Users/ischluesche/.julia/scratchspaces/0b3b1443-0f03-428d-bdfb-f27f9c1191ea/root create -y -p /Users/ischluesche/Documents/Grad_School/Research/RadarQC/RadarQC/.CondaPkg/env --override-channels --no-channel-priority python[version='>=3.7,<4',channel='conda-forge',build='*cpython*'] -c conda-forge
+# conda version: 3.8.0
++https://conda.anaconda.org/conda-forge/osx-arm64::xz-5.2.6-h57fd34a_0
++https://conda.anaconda.org/conda-forge/osx-arm64::libexpat-2.5.0-hb7217d7_1
++https://conda.anaconda.org/conda-forge/osx-arm64::ncurses-6.4-h463b476_2
++https://conda.anaconda.org/conda-forge/osx-arm64::bzip2-1.0.8-h93a5062_5
++https://conda.anaconda.org/conda-forge/osx-arm64::libffi-3.4.2-h3422bc3_5
++https://conda.anaconda.org/conda-forge/osx-arm64::libzlib-1.2.13-h53f4e23_5
++https://conda.anaconda.org/conda-forge/osx-arm64::ca-certificates-2024.2.2-hf0a4a13_0
++https://conda.anaconda.org/conda-forge/osx-arm64::readline-8.2-h92ec313_1
++https://conda.anaconda.org/conda-forge/osx-arm64::tk-8.6.13-h5083fa2_1
++https://conda.anaconda.org/conda-forge/osx-arm64::libsqlite-3.44.2-h091b4b1_0
++https://conda.anaconda.org/conda-forge/osx-arm64::openssl-3.2.1-h0d3ecfb_0
++https://conda.anaconda.org/conda-forge/noarch::tzdata-2024a-h0c530f3_0
++https://conda.anaconda.org/conda-forge/osx-arm64::python-3.12.1-hdf0ec26_1_cpython
++https://conda.anaconda.org/conda-forge/noarch::wheel-0.42.0-pyhd8ed1ab_0
++https://conda.anaconda.org/conda-forge/noarch::setuptools-69.0.3-pyhd8ed1ab_0
++https://conda.anaconda.org/conda-forge/noarch::pip-24.0-pyhd8ed1ab_0
+# update specs: ["conda-forge::python[version='>=3.7,<4',build=*cpython*]"]
+==> 2024-02-06 12:20:09 <==
+# cmd: /Users/ischluesche/.julia/artifacts/5767a45b62528e0be4c40dbae502ad3e132f1d62/bin/micromamba -r /Users/ischluesche/.julia/scratchspaces/0b3b1443-0f03-428d-bdfb-f27f9c1191ea/root install -y -p /Users/ischluesche/Documents/Grad_School/Research/RadarQC/RadarQC/.CondaPkg/env --override-channels --no-channel-priority python[version='>=3.7,<4',channel='conda-forge',build='*cpython*'] scikit-learn[version='*'] -c conda-forge
+# conda version: 3.8.0
+-https://conda.anaconda.org/conda-forge/osx-arm64::python-3.12.1-hdf0ec26_1_cpython
++https://conda.anaconda.org/conda-forge/osx-arm64::python-3.12.1-hdf0ec26_1_cpython
++https://conda.anaconda.org/conda-forge/osx-arm64::llvm-openmp-17.0.6-hcd81f8e_0
++https://conda.anaconda.org/conda-forge/osx-arm64::python_abi-3.12-4_cp312
++https://conda.anaconda.org/conda-forge/osx-arm64::libcxx-16.0.6-h4653b0c_0
++https://conda.anaconda.org/conda-forge/osx-arm64::libgfortran5-13.2.0-hf226fd6_2
++https://conda.anaconda.org/conda-forge/osx-arm64::libgfortran-5.0.0-13_2_0_hd922786_2
++https://conda.anaconda.org/conda-forge/osx-arm64::libopenblas-0.3.26-openmp_h6c19121_0
++https://conda.anaconda.org/conda-forge/osx-arm64::libblas-3.9.0-21_osxarm64_openblas
++https://conda.anaconda.org/conda-forge/osx-arm64::libcblas-3.9.0-21_osxarm64_openblas
++https://conda.anaconda.org/conda-forge/osx-arm64::liblapack-3.9.0-21_osxarm64_openblas
++https://conda.anaconda.org/conda-forge/osx-arm64::numpy-1.26.4-py312h8442bc7_0
++https://conda.anaconda.org/conda-forge/osx-arm64::scipy-1.12.0-py312h9d7df2b_2
++https://conda.anaconda.org/conda-forge/noarch::threadpoolctl-3.2.0-pyha21a80b_0
++https://conda.anaconda.org/conda-forge/noarch::joblib-1.3.2-pyhd8ed1ab_0
++https://conda.anaconda.org/conda-forge/osx-arm64::scikit-learn-1.4.0-py312hd4306f4_0
+# update specs: ["conda-forge::python[version='>=3.7,<4',build=*cpython*]", "scikit-learn=*"]
+==> 2024-02-06 12:20:33 <==
+# cmd: /Users/ischluesche/.julia/artifacts/5767a45b62528e0be4c40dbae502ad3e132f1d62/bin/micromamba -r /Users/ischluesche/.julia/scratchspaces/0b3b1443-0f03-428d-bdfb-f27f9c1191ea/root install -y -p /Users/ischluesche/Documents/Grad_School/Research/RadarQC/RadarQC/.CondaPkg/env --override-channels --no-channel-priority joblib[version='*'] python[version='>=3.7,<4',channel='conda-forge',build='*cpython*'] scikit-learn[version='*'] -c conda-forge
+# conda version: 3.8.0
+-https://conda.anaconda.org/conda-forge/osx-arm64::python-3.12.1-hdf0ec26_1_cpython
++https://conda.anaconda.org/conda-forge/osx-arm64::python-3.12.1-hdf0ec26_1_cpython
+# update specs: ["joblib=*", "conda-forge::python[version='>=3.7,<4',build=*cpython*]", "scikit-learn=*"]
+==> 2024-02-06 12:29:51 <==
+# cmd: /Users/ischluesche/.julia/artifacts/5767a45b62528e0be4c40dbae502ad3e132f1d62/bin/micromamba -r /Users/ischluesche/.julia/scratchspaces/0b3b1443-0f03-428d-bdfb-f27f9c1191ea/root install -y -p /Users/ischluesche/Documents/Grad_School/Research/RadarQC/RadarQC/.CondaPkg/env --override-channels --no-channel-priority joblib[version='*'] matplotlib[version='>=1'] python[version='>=3.7,<4',channel='conda-forge',build='*cpython*'] scikit-learn[version='*'] scikit-learn[version='>=1.2, <1.4',channel='conda-forge'] -c conda-forge
+# conda version: 3.8.0
+-https://conda.anaconda.org/conda-forge/osx-arm64::python-3.12.1-hdf0ec26_1_cpython
+-https://conda.anaconda.org/conda-forge/osx-arm64::scikit-learn-1.4.0-py312hd4306f4_0
++https://conda.anaconda.org/conda-forge/osx-arm64::python-3.12.1-hdf0ec26_1_cpython
++https://conda.anaconda.org/conda-forge/osx-arm64::libwebp-base-1.3.2-hb547adb_0
++https://conda.anaconda.org/conda-forge/osx-arm64::pthread-stubs-0.4-h27ca646_1001
++https://conda.anaconda.org/conda-forge/osx-arm64::xorg-libxdmcp-1.1.3-h27ca646_0
++https://conda.anaconda.org/conda-forge/osx-arm64::xorg-libxau-1.0.11-hb547adb_0
++https://conda.anaconda.org/conda-forge/osx-arm64::libjpeg-turbo-3.0.0-hb547adb_1
++https://conda.anaconda.org/conda-forge/osx-arm64::lerc-4.0.0-h9a09cb3_0
++https://conda.anaconda.org/conda-forge/osx-arm64::libdeflate-1.19-hb547adb_0
++https://conda.anaconda.org/conda-forge/osx-arm64::zstd-1.5.5-h4f39d0f_0
++https://conda.anaconda.org/conda-forge/osx-arm64::libpng-1.6.42-h091b4b1_0
++https://conda.anaconda.org/conda-forge/osx-arm64::libbrotlicommon-1.1.0-hb547adb_1
++https://conda.anaconda.org/conda-forge/osx-arm64::contourpy-1.2.0-py312h76e736e_0
++https://conda.anaconda.org/conda-forge/osx-arm64::scikit-learn-1.3.2-py312h6f466fd_2
++https://conda.anaconda.org/conda-forge/osx-arm64::kiwisolver-1.4.5-py312h389731b_1
++https://conda.anaconda.org/conda-forge/osx-arm64::tornado-6.3.3-py312h02f2b3b_1
++https://conda.anaconda.org/conda-forge/osx-arm64::libxcb-1.15-hf346824_0
++https://conda.anaconda.org/conda-forge/osx-arm64::libtiff-4.6.0-ha8a6c65_2
++https://conda.anaconda.org/conda-forge/osx-arm64::freetype-2.12.1-hadb7bae_2
++https://conda.anaconda.org/conda-forge/osx-arm64::libbrotlienc-1.1.0-hb547adb_1
++https://conda.anaconda.org/conda-forge/osx-arm64::libbrotlidec-1.1.0-hb547adb_1
++https://conda.anaconda.org/conda-forge/osx-arm64::openjpeg-2.5.0-h4c1507b_3
++https://conda.anaconda.org/conda-forge/osx-arm64::lcms2-2.16-ha0e7c42_0
++https://conda.anaconda.org/conda-forge/osx-arm64::brotli-bin-1.1.0-hb547adb_1
++https://conda.anaconda.org/conda-forge/osx-arm64::pillow-10.2.0-py312hac22aec_0
++https://conda.anaconda.org/conda-forge/osx-arm64::brotli-1.1.0-hb547adb_1
++https://conda.anaconda.org/conda-forge/noarch::six-1.16.0-pyh6c4a22f_0
++https://conda.anaconda.org/conda-forge/noarch::munkres-1.1.4-pyh9f0ad1d_0
++https://conda.anaconda.org/conda-forge/noarch::pyparsing-3.1.1-pyhd8ed1ab_0
++https://conda.anaconda.org/conda-forge/noarch::packaging-23.2-pyhd8ed1ab_0
++https://conda.anaconda.org/conda-forge/noarch::cycler-0.12.1-pyhd8ed1ab_0
++https://conda.anaconda.org/conda-forge/noarch::certifi-2024.2.2-pyhd8ed1ab_0
++https://conda.anaconda.org/conda-forge/noarch::python-dateutil-2.8.2-pyhd8ed1ab_0
++https://conda.anaconda.org/conda-forge/osx-arm64::fonttools-4.48.1-py312he37b823_0
++https://conda.anaconda.org/conda-forge/osx-arm64::matplotlib-base-3.8.2-py312hba9b818_0
++https://conda.anaconda.org/conda-forge/osx-arm64::matplotlib-3.8.2-py312h1f38498_0
+# update specs: ["joblib=*", "matplotlib[version='>=1']", "conda-forge::python[version='>=3.7,<4',build=*cpython*]", "scikit-learn=*", "conda-forge::scikit-learn[version='>=1.2, <1.4']"]

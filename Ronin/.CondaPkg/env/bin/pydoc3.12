@@ -1,0 +1,5 @@
+#!/Users/ischluesche/Documents/Grad_School/Research/RadarQC/RadarQC/.CondaPkg/env/bin/python3.12
+
+import pydoc
+if __name__ == '__main__':
+    pydoc.cli()
