@@ -1,1 +1,1 @@
-["NCP", "AHT", "STD(VV)", "PGG", "RNG", "ISO(DBZ)"]
+NCP, AHT, STD(VV), PGG, RNG, ISO(DBZ)

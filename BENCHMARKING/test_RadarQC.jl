@@ -67,7 +67,7 @@ indexer_list = []
 
 ###Get verification for each of the cfradials 
 for cfrad_name in readdir(TRAINING_PATH)
-    print(TRAINING_PATH * cfrad_name)
+
     Dataset(TRAINING_PATH * cfrad_name) do f
         X_new, Y_new, indexer = RadarQC.process_single_file(f, config_file_path; HAS_MANUAL_QC=true, REMOVE_LOW_NCP=true, REMOVE_HIGH_PGG=true, QC_variable = "VG", 
                                                     remove_variable = "VV", replace_missing = false) 
