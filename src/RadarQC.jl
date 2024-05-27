@@ -10,7 +10,7 @@ module RadarQC
     using Missings
     using BenchmarkTools
     using HDF5 
-    using MLJ
+    using MLJ, MLJLinearModels, CategoricalArrays
     using PythonCall
     using DataFrames
 
@@ -873,6 +873,13 @@ module RadarQC
 
 
 
+    function standardize(column)
+        col_max = maximum(column)
+        col_min = minimum(column)
+        return (map(x-> (x - col_min) / (col_max - col_min), column))
+    end 
+
+
      """
      # Uses L1 regression with a variety of λ penalty values to determine the most useful features for
      input to the random forest model. 
@@ -914,6 +921,9 @@ module RadarQC
     """
      function get_feature_importance(input_file_path::String, λs::Vector{Float64}; pred_threshold::Float64 = .5)
 
+
+        @load LogisticClassifier pkg=MLJLinearModels
+
         training_data = h5open(input_file_path)
         
         ###Standardize features to expedite regression convergence 
@@ -940,7 +950,7 @@ module RadarQC
             results = pdf(y_pred, [0, 1])
             met_predictions = map(x -> x > pred_threshold ? 0 : 1, results[:, 1])
 
-            push!(rmses, rmse(met_predictions, targets_raw))
+            push!(rmses, MLJ.rmse(met_predictions, targets_raw))
 
             for (i, param) in enumerate(params)
                 push!(coef_values[param], coefs[i][2])
