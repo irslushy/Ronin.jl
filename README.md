@@ -1,8 +1,8 @@
-# RadarQC.jl
+# Ronin.jl
 
-RadarQC.jl contains a combination julia/python implementation of the algorithm described in [DesRosiers and Bell 2023](https://journals.ametsoc.org/view/journals/aies/aop/AIES-D-23-0064.1/AIES-D-23-0064.1.xml) for removing non-meteoroloigcal gates from airborne radar scans. Care has been taken to ensure relative similarity to the form described in the manuscript, but some changes have been made in the interest of computational speed. 
+Ronin.jl (Random forest Optimized Nonmeteorological IdentificatioN) contains a combination julia/python implementation of the algorithm described in [DesRosiers and Bell 2023](https://journals.ametsoc.org/view/journals/aies/aop/AIES-D-23-0064.1/AIES-D-23-0064.1.xml) for removing non-meteoroloigcal gates from airborne radar scans. Care has been taken to ensure relative similarity to the form described in the manuscript, but some changes have been made in the interest of computational speed. 
 
-A key part of the process is computing necessary derived parameters from the raw radar moments, which may be custom-specified in a parameters file. Many of the relevant functions for these calculations are contained within [RadarQC.jl](./src/RadarQC.jl). 
+A key part of the process is computing necessary derived parameters from the raw radar moments, which may be custom-specified in a parameters file. Many of the relevant functions for these calculations are contained within [Ronin.jl](./src/Ronin.jl). 
 
   <br> 
 
@@ -13,14 +13,14 @@ A key part of the process is computing necessary derived parameters from the raw
 ___
 # Getting Started:
 ## Setting up the environment (CSU)
-After cloning the repository, start Julia using RadarQC as the project directory, either by calling 
+After cloning the repository, start Julia using Ronin as the project directory, either by calling 
 ```
-julia --project=RadarQC
+julia --project=Ronin
 ```
-from the parent directory of `RadarQC` or modifying the `JULIA_PROJECT` environment variable. <br>
+from the parent directory of `Ronin` or modifying the `JULIA_PROJECT` environment variable. <br>
 Then, enter package mode in the REPL by pressing `]`.<br>
 <br><br>
-Next, run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the RadarQC package. Now, exit package using the dlete key. To ensure that everything was installed properly, run `using RadarQC` on the Julia REPL. No errors or information should print out if successful. 
+Next, run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the Ronin package. Now, exit package using the dlete key. To ensure that everything was installed properly, run `using Ronin` on the Julia REPL. No errors or information should print out if successful. Run `add iJulia` if you will be viewing the code in a Jupyter notebook and need access to the Jupyter kernel.
 > Guide adaped from https://github.com/mmbell/Scythe.jl/tree/main
 >
 ## Setting up the environment (Derecho)
@@ -28,23 +28,15 @@ Next, run `instantiate` to download the necessary dependencies. This should serv
 export JULIA_DEPOT_PATH=$SCRATCH/julia <br>
 curl -fsSL https://install.julialang.org | sh
 <br>
-### Setting up RadarQC project
-After cloning the repository, start Julia using RadarQC as the project directory, either by calling 
-```
-julia --project=RadarQC
-```
-from the parent directory of `RadarQC` or modifying the `JULIA_PROJECT` environment variable. <br>
-Then, enter package mode in the REPL by pressing `]`.<br>
-<br><br>
-Next, run `activate “<path/to/repo/RadarQC.jl>”`. Then run `instantiate` to download the necessary dependencies. This should serve both to download/install dependencies and precompile the RadarQC package. Run `add iJulia` if you will be viewing the code in a Jupyter notebook and need access to the Jupyter kernel.
 
-Now, exit package mode using the delete key. To ensure that everything was installed properly, run `using RadarQC` on the Julia REPL. No errors or information should print out if successful. 
+
+Now, exit package mode using the delete key. To ensure that everything was installed properly, run `using Ronin` on the Julia REPL. No errors or information should print out if successful. 
 > Guide adapted from https://github.com/mmbell/Scythe.jl/tree/main
 
 ## Example notebook 
 <br>
 
-If you're looking to jump right in, check out [RadarQC Example Notebook](./RadarQC_example.ipynb) - it contains everything you need to get up and running.
+If you're looking to jump right in, check out [Ronin Example Notebook](./Ronin_example.ipynb) - it contains everything you need to get up and running.
 <br><br><br>
 
 ___
