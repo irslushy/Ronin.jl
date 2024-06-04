@@ -1,5 +1,5 @@
 ###Rudimentary test suite to ensure that updates do not break the code 
-using RadarQC
+using Ronin
 using Missings 
 using HDF5 
 using NCDatasets
@@ -15,7 +15,7 @@ sample_model = "./BENCHMARKING/benchmark_setup/benchmark_model.joblib"
 
 
 ###NEED TO ALLOW THIS TO IGNORE COMMENTS 
-tasks = RadarQC.get_task_params(config_file_path)
+tasks = Ronin.get_task_params(config_file_path)
 print(tasks)
 
 placeholder_matrix = allowmissing(ones(3,3))
@@ -45,6 +45,7 @@ calculate_features(TRAINING_PATH, tasks, weight_matrixes,
                     REMOVE_LOW_NCP = true, REMOVE_HIGH_PGG = true, 
                     QC_variable="VG", remove_variable="VV")
 
+
 ###Ensure multiple dispatch is functioning properly and giving us the same results 
 calculate_features(TRAINING_PATH, config_file_path, "garbage_2.h5", true,
                     verbose=true, REMOVE_LOW_NCP = true, 
@@ -69,7 +70,7 @@ indexer_list = []
 for cfrad_name in readdir(TRAINING_PATH)
 
     Dataset(TRAINING_PATH * cfrad_name) do f
-        X_new, Y_new, indexer = RadarQC.process_single_file(f, config_file_path; HAS_MANUAL_QC=true, REMOVE_LOW_NCP=true, REMOVE_HIGH_PGG=true, QC_variable = "VG", 
+        X_new, Y_new, indexer = Ronin.process_single_file(f, config_file_path; HAS_MANUAL_QC=true, REMOVE_LOW_NCP=true, REMOVE_HIGH_PGG=true, QC_variable = "VG", 
                                                     remove_variable = "VV", replace_missing = false) 
         global X
         global Y

@@ -2,7 +2,7 @@ using Pkg
 
 Pkg.instantiate()
 
-using RadarQC
+using Ronin
 using BenchmarkTools
 using Missings
 
