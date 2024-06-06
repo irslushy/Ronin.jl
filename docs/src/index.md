@@ -66,7 +66,7 @@ ___
 
 A key portion of this methodology is deriving "predictors" from raw input radar moments. Raw moments include quantities such as Doppler velocity and reflectivity, while derived variables include things such as the standard deviation of a raw moment across a set of azimuths and ranges in a radar scan. Calculating these features allows the addition of spatial context to the classification problem even when only classifying a single gate. 
 
-Each of the spatial predictors (Currently STD, ISO, and AVG) have predefined "windows" that specify the area they calculate. These windows are specified as matrixes at the top of [RoninFeatures.jl](../../src/RoninFeatures.jl). They can also be user specified when using [calculate_features](https://irslushy.github.io/Ronin.jl/dev/api.html#Ronin.calculate_features-Tuple{String,%20Vector{String},%20Vector{Matrix{Union{Missing,%20Float64}}},%20String,%20Bool}). &nbsp;
+Each of the spatial predictors (Currently STD, ISO, and AVG) have predefined "windows" that specify the area they calculate. These windows are specified as matrixes at the top of [RoninFeatures.jl](https://github.com/irslushy/Ronin.jl/blob/main/src/RoninFeatures.jl). They can also be user specified when using [calculate_features](https://irslushy.github.io/Ronin.jl/dev/api.html#Ronin.calculate_features-Tuple{String,%20Vector{String},%20Vector{Matrix{Union{Missing,%20Float64}}},%20String,%20Bool}). &nbsp;
 
 
 ### Currently Implemented Functions:   
