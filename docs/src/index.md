@@ -1,8 +1,6 @@
 
 Ronin (Random forest Optimized Nonmeteorological IdentificatioN) is a package that utilizes a methodology developed by [Dr. Alex DesRosiers and Dr. Michael Bell](https://journals.ametsoc.org/view/journals/aies/aop/AIES-D-23-0064.1/AIES-D-23-0064.1.xml) to remove non-meteorological gates from Doppler radar scans by leveraging machine learning techniques. In its current form, it contains functionality to derive a set of features from input radar data, use these features to train a Random Forest classification model, and apply this model to the raw fields contained within the radar scans. It also has some model evaluation ability. The beginning of this guide will walk through a basic workflow to train a model starting from scratch.  
 
-&nbsp;
-  &nbsp;
 
 
 # Workflow Walkthrough 
@@ -14,10 +12,13 @@ Ronin (Random forest Optimized Nonmeteorological IdentificatioN) is a package th
 The first step in the process is to split our data so that some of it may be utilized for model training and the other portion for model testing. It's important to keep the two sets separate, otherwise the model may overfit. 
 
 The basic requirement here is to have a directory or directories of cfradial scans, and two directories to put training and testing files, respectively. Make sure that no other files are present in these directories. To do this, the [`split_training_testing!`](https://github.com/irslushy/Ronin.jl/blob/259aa4d306e09fedf9d4208bcc8a584fbabd89a2/src/Ronin.jl#L612) function will be used. For example, if one had two cases of radar data, located in `./CASE1/` and `./CASE2/` and wanted to split into `./TRAINING` and `./TESTING`, execute the command 
+
 ```julia
 split_training_testing(["./CASE1", "./CASE2"], "./TRAINING", "./TESTING")
 ```
+
 More information about this function is contained within the docs. 
+
 --- 
 
 Now that we have split the input files, we can proceed to calculate the features used to train and test our Random Forest model. Further details are contained within the aforementioned manuscript, but it has been shown that the parameters contained [here](https://github.com/irslushy/Ronin.jl/blob/259aa4d306e09fedf9d4208bcc8a584fbabd89a2/MODELS/DesRosiers_Bell_23/config.txt) are most effective for discriminating between meteorological/non-meteorological gates. For this, we will use the [calculate_features](https://github.com/irslushy/Ronin.jl/blob/259aa4d306e09fedf9d4208bcc8a584fbabd89a2/src/Ronin.jl#L96-L181) function. Since we are calculating features to **train** a model at this point, we will assume that they have already a human apply QC. To get the most skillful model possible, we will want to remove "easy" cases from the training set, so set `REMOVE_LOW_NCP=true` and `REMOVE_HIGH_PGG=true` to ignore data not meeting minimum quality thresholds. It's also important to specify which variable contained with the input scans has already been QC'ed - in the ELDORA scans, this is `VG`. `missing` values must also be removed from the initial training set, so we'll use a raw variable `VV` to determine where these gates are located. With that said, one may now invoke 
@@ -60,9 +61,9 @@ It's finally time to begin cleaning radar data! We'll use the `QC_scan` function
 QC_scan("./cfrad_example_scan", "./config.txt", "./TRAINED_MODEL.joblib")
 ```
 
-___
+---
 ## Spatial Predictors Reference 
-___ 
+---
 
 A key portion of this methodology is deriving "predictors" from raw input radar moments. Raw moments include quantities such as Doppler velocity and reflectivity, while derived variables include things such as the standard deviation of a raw moment across a set of azimuths and ranges in a radar scan. Calculating these features allows the addition of spatial context to the classification problem even when only classifying a single gate. 
 
@@ -71,42 +72,40 @@ Each of the spatial predictors (Currently STD, ISO, and AVG) have predefined "wi
 
 ### Currently Implemented Functions:   
 
-#### <b>STD(VAR)</b>
+#### **STD(VAR)**
 --- 
 Calculates the standard deviation of each gate of the variable with name VAR in the given radar sweep. By default, gates that contain `missing` values are ignored in this calculation. Further by default 
 
 ---
 
-#### <b> ISO(VAR)</b>
+#### **ISO(VAR)**
 --- 
 Calculates the "isolation" of each gate of the variable with name VAR in the given radar sweep. This calculation sums the number of adjacent gates in both range and aziumth that contain `missing` values. 
 
 ---
-#### <b>AVG(VAR)</b>
+#### **AVG(VAR)**
 ---
 Calculates the average of each gate of the variable with name VAR in the given radar sweep. By default, gates that contain `missing` values are ignored in this calculation. 
 
 ---
-### <b>RNG/NRG</b>
+### **RNG/NRG**
 Calculates the range of all radar gates (RNG) from the airborne platform, or normalized by altitude (NRG). 
 ___ 
-### <b>PGG</b>
-<b>P</b>robability of <b>G</b>round <b>G</b>ate - a geometric calculation that gives the probability that a given radar gate is a result of reflection from the ground. 
+### **PGG**
+**P**robability of **G**round **G**ate - a geometric calculation that gives the probability that a given radar gate is a result of reflection from the ground. 
 ___
 
-### <b>AHT</b>
-<b>A</b>ircraft <b>H</b>eigh<b>T</b> - calculates platform height while factoring in Earth curvature. 
+### **AHT**
+**A**ircraft **H**eigh**T** - calculates platform height while factoring in Earth curvature. 
 ___ 
 
-&nbsp;
 
-### <b>Implementing a new parameter</b>
+### **Implementing a new parameter**
 
 The code is written in such a way that it would hopefully be relatively easy for a user to add a function of their own to apply to radar data. One could go about this using the following as a guide.    
 
-&nbsp;
 
-There are two types of functions in Ronin: Those that act on radar variables (STD, AVG) and those that operate relatively independent of them (RNG, PGG). Functions that act on variables must be defined using a <b>3 letter abbreviation</b> and begin with `calc_`. Furthermore, the function should take <b>1 positional</b> and <b>2 keyword</b> arguments. The positional argument should be the variable in matrix form to operate upon. The keyword arguments should be `weights` and `window`, where both have the same dimensions. `window` specifies the area for the spatial parameter to take for each gate, and `weights` specifies how much weight to give each neighboring gate. For example, if we wanted to define a function that gave us the logartihm of a variable, we could name it `LOG`, with the function defined in code as
+There are two types of functions in Ronin: Those that act on radar variables (STD, AVG) and those that operate relatively independent of them (RNG, PGG). Functions that act on variables must be defined using a **3 letter abbreviation** and begin with `calc_`. Furthermore, the function should take **1 positional** and **2 keyword** arguments. The positional argument should be the variable in matrix form to operate upon. The keyword arguments should be `weights` and `window`, where both have the same dimensions. `window` specifies the area for the spatial parameter to take for each gate, and `weights` specifies how much weight to give each neighboring gate. For example, if we wanted to define a function that gave us the logartihm of a variable, we could name it `LOG`, with the function defined in code as
 
 ```julia
 function calc_LOG(var::Matrix{Union{Missing, Float64}}; weights=default_weights, window=default_window)
@@ -117,24 +116,23 @@ The function should return an array of the same size as `var`.
 Finally, add the three letter abbreviation `LOG` to the `valid_funcs` array at the top of `RoninFeatures.jl`. 
 
 Congratulations! You've added a new function! 
-&nbsp;
-&nbsp;
-___
+
+---
 ## Data Conventions/Glossary 
-___
+---
 Some important data convetions to make note of: 
 
-* <b>Meteorological Data is referred to by 1 or `true`</b>
-* <b>Non-Meteorological Data is referred to by 0 or `false`</b>
-* <b>ELDORA</b> scan variable names: 
-    * Raw Velocity: <b>VV</b>
-    * QC'ed Velocity (Used for ground truth): <b>VG</b>
-    * Raw Reflectivity: <b>ZZ</b>
-    * QC'ed Reflectivity (Used for ground truth): <b>DBZ</b>
-    * Normalized Coherent Power/Signal Quality Index: <b>NCP</b>
-* <b>NOAA TDR</b> scan variable names: 
-    * Raw Velocity: <b>VEL</b>
-    * QC'ed Velocity (Used for ground truth): <b>VG</b>
-    * Raw Reflectivity: <b>DBZ</b>
-    * QC'ed Reflectivity: <b>ZZ</b>
-    * Normalized Coherent Power/Signal Quality Index: <b>SQI</b>
+* **Meteorological Data is referred to by 1 or `true`**
+* **Non-Meteorological Data is referred to by 0 or `false`**
+* **ELDORA**scan variable names: 
+    * Raw Velocity: **VV**
+    * QC'ed Velocity (Used for ground truth): **VG**
+    * Raw Reflectivity: **ZZ**
+    * QC'ed Reflectivity (Used for ground truth): **DBZ**
+    * Normalized Coherent Power/Signal Quality Index: **NCP**
+* **NOAA TDR** scan variable names: 
+    * Raw Velocity: **VEL**
+    * QC'ed Velocity (Used for ground truth): **VG**
+    * Raw Reflectivity: **DBZ**
+    * QC'ed Reflectivity: **ZZ**
+    * Normalized Coherent Power/Signal Quality Index: **SQI**
