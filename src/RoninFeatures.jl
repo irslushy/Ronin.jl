@@ -256,8 +256,12 @@ function get_num_tasks(params_file; delimeter = ",")
         if line[1] == '#'
             continue
         else 
-            delimited = split(line, delimeter) 
-            num_tasks = num_tasks + length(delimited)
+            delimited = split(strip(line), delimeter) 
+            for token in delimited
+                if !(token == "")
+                    num_tasks += 1
+                end 
+            end 
         end
     end 
 
@@ -302,6 +306,11 @@ function get_task_params(params_file, variablelist; delimiter=",")
                 ###Remove whitespace and see if the token is of the form ABC(DEF)
                 token = strip(token, ' ')
                 expr_ret = match(func_regex,token)
+
+                if token == ""
+                    print("CONTINUING") 
+                    continue 
+                end 
                 ###If it is, make sure that it is both a valid function and a valid variable 
                 if (typeof(expr_ret) != Nothing)
                     if (expr_ret[1] ∉ valid_funcs || 
@@ -324,6 +333,7 @@ function get_task_params(params_file, variablelist; delimiter=",")
             end
         end 
     end 
+    print(length(task_param_list))
     return(task_param_list)
 end 
 
@@ -344,9 +354,12 @@ function get_task_params(params_file; delimiter = ',')
         if line[1] == '#'
             continue
         else
-            delimited = split(line, delimiter)
+            delimited = split(strip(line), delimiter)
             for token in delimited
                 token = strip(token, ' ')
+                if token == ""
+                    continue 
+                end 
                 expr_ret = match(func_regex,token)
 
                 if (typeof(expr_ret) != Nothing)
@@ -354,12 +367,10 @@ function get_task_params(params_file; delimiter = ',')
                         println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
                         "Potentially invalid function or missing variable\n")
                     else
-                        ###Add λ to the front of the token to indicate it is a function call
-                        ###This helps later when trying to determine what to do with each "task" 
                         push!(task_param_list, token)
                     end 
                 else 
-                    push!(task_param_list, token)
+                    push!(task_param_list, token)                 
                 end 
             end 
         end 

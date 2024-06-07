@@ -376,7 +376,7 @@ module Ronin
     ```
     If `verify`, the location to output this verification to. 
     """
-    function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5" )
+    function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5", col_subset=:)
 
 
         ###Import necessecary Python modules 
@@ -388,7 +388,7 @@ module Ronin
         printstyled("\nOpening $(radar_data)...\n", color=:blue)
         ###Split into features
 
-        X = read(radar_data["X"])
+        X = read(radar_data["X"])[col_subset]
         Y = read(radar_data["Y"])
 
         model = ensemble.RandomForestClassifier(n_estimators = 21, max_depth = 14, random_state = 50, class_weight = "balanced")
