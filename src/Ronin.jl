@@ -388,7 +388,7 @@ module Ronin
         printstyled("\nOpening $(radar_data)...\n", color=:blue)
         ###Split into features
 
-        X = read(radar_data["X"])[col_subset]
+        X = read(radar_data["X"])[: , col_subset]
         Y = read(radar_data["Y"])
 
         model = ensemble.RandomForestClassifier(n_estimators = 21, max_depth = 14, random_state = 50, class_weight = "balanced")
