@@ -12,6 +12,7 @@ calculate_features(::String, ::String, ::String, ::Bool)
 calculate_features(::String, ::Vector{String}, ::Vector{Matrix{Union{Missing, Float64}}}, ::String, ::Bool)
 split_training_testing!
 train_model(::String, ::String)
+remove_validation(::String, ::String, ::String, ::Bool)
 get_feature_importance(::String, ::Vector{Float64})
 ``` 
 

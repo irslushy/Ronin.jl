@@ -57,7 +57,7 @@ This will train a model based off the information contained within `TRAINING_FEA
 
 It's finally time to begin cleaning radar data! We'll use the `QC_scan` function to apply our model to raw moments. Let's imagine we want to clean the scan located at `./cfrad_example_scan` using the model we previously trained at `TRAINED_MODEL.joblib`. By default, this will clean the variables with the names `ZZ` and `VV`, though this can be changed by modifying the `VARIABLES_TO_QC` argument. They will be added to the cfradial file with the names `ZZ_QC` and `VV_QC`, respectively, though this suffix can be changed though keyword arguments. Execute as  
 
-```julia
+```
 QC_scan("./cfrad_example_scan", "./config.txt", "./TRAINED_MODEL.joblib")
 ```
 
@@ -107,7 +107,7 @@ The code is written in such a way that it would hopefully be relatively easy for
 
 There are two types of functions in Ronin: Those that act on radar variables (STD, AVG) and those that operate relatively independent of them (RNG, PGG). Functions that act on variables must be defined using a **3 letter abbreviation** and begin with `calc_`. Furthermore, the function should take **1 positional** and **2 keyword** arguments. The positional argument should be the variable in matrix form to operate upon. The keyword arguments should be `weights` and `window`, where both have the same dimensions. `window` specifies the area for the spatial parameter to take for each gate, and `weights` specifies how much weight to give each neighboring gate. For example, if we wanted to define a function that gave us the logartihm of a variable, we could name it `LOG`, with the function defined in code as
 
-```julia
+```
 function calc_LOG(var::Matrix{Union{Missing, Float64}}; weights=default_weights, window=default_window)
 ```
 
