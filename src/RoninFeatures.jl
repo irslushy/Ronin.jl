@@ -343,7 +343,6 @@ Parses input parameter file for use in outputting feature names to
     HDF5 file as attributes. NOTE: Cfradial-unaware. If one of the variables is 
     specified incorrectly in the parameter file, will cause errors
 """
-
 function get_task_params(params_file; delimiter = ',')
 
     tasks = readlines(params_file)
@@ -379,76 +378,76 @@ function get_task_params(params_file; delimiter = ',')
 end 
 
 """
-    Driver function that calculates a set of features from a single CFRadial file. Features are 
-    specified in file located at argfile_path. 
 
-    Will return a tuple of (X, Y, indexer) where X is the features matrix,  `Y`, a matrix containing the verification 
-    - where human QC determined the gate was meteorological (value of 1), or non-meteorological (value of 0), 
-    and `indexer` contains a vector of booleans describing which gates met basic quality control thresholds 
-    and thus are represented in the X and Y matrixes
+Driver function that calculates a set of features from a single CFRadial file. Features are 
+specified in file located at argfile_path. 
 
-    Weight matrixes are specified in file header, or passed as explicit argument. 
+Will return a tuple of (X, Y, indexer) where X is the features matrix,  `Y`, a matrix containing the verification 
+- where human QC determined the gate was meteorological (value of 1), or non-meteorological (value of 0), 
+and `indexer` contains a vector of booleans describing which gates met basic quality control thresholds 
+and thus are represented in the X and Y matrixes
 
-    # Required arguments 
+Weight matrixes are specified in file header, or passed as explicit argument. 
 
-    ```julia 
-    cfrad::NCDataset 
-    ```
-    Input `NCDataset` containing radar scan variables 
+# Required arguments 
 
-    ```julia 
-    argfile_path::String 
-    ```
-    Path to file contaning config/task information. 
+```julia 
+cfrad::NCDataset 
+```
+Input `NCDataset` containing radar scan variables 
 
-    # Optional keyword arguments 
+```julia 
+argfile_path::String 
+```
+Path to file contaning config/task information. 
 
-    ```julia 
-    HAS_MANUAL_QC::Bool = false
-    ```
-    If the scan has already had a human apply quality control to it, set to `true`. Otherwise, `false`
+# Optional keyword arguments 
 
-    ```julia 
-    REMOVE_LOW_NCP::Bool = false
-    ```
-    Whether or not to ignore gates that do not meet a minimum NCP/SQI threshold. If `true`, these gates will be
-    set to `false` in `indexer`, and features/verification will not be calculated for them. 
+```julia 
+HAS_MANUAL_QC::Bool = false
+```
+If the scan has already had a human apply quality control to it, set to `true`. Otherwise, `false`
 
-    ```julia 
-    REMOVE_HIGH_PGG::Bool = false
-    ```
-    Whether or not to ignore gates that exceed a given Probability of Ground Gate(PGG) threshold. If `true`, these gates will be
-    set to `false` in `indexer`, and features/verification will not be calculated for them. 
+```julia 
+REMOVE_LOW_NCP::Bool = false
+```
+Whether or not to ignore gates that do not meet a minimum NCP/SQI threshold. If `true`, these gates will be
+set to `false` in `indexer`, and features/verification will not be calculated for them. 
 
-    ```julia 
-    QC_variable::String = "VG"
-    ```
-    Name of a variable in input CFRadial file that has had QC applied to it already. Used to calculate verification `Y` matrix. 
+```julia 
+REMOVE_HIGH_PGG::Bool = false
+```
+Whether or not to ignore gates that exceed a given Probability of Ground Gate(PGG) threshold. If `true`, these gates will be
+set to `false` in `indexer`, and features/verification will not be calculated for them. 
 
-    ```julia 
-    remove_variable::String = "VV" 
-    ```
-    Name of raw variable in input CFRadial file that will be used to determine where `missing` gates exist in the sweep.
+```julia 
+QC_variable::String = "VG"
+```
+Name of a variable in input CFRadial file that has had QC applied to it already. Used to calculate verification `Y` matrix. 
 
-    ```julia 
-    replace_missing::Bool = false
-    ```
-    For spatial parameters, whether or not to replace `missings` values with `FILL_VAL`
+```julia 
+remove_variable::String = "VV" 
+```
+Name of raw variable in input CFRadial file that will be used to determine where `missing` gates exist in the sweep.
 
-    --- 
+```julia 
+replace_missing::Bool = false
+```
+For spatial parameters, whether or not to replace `missings` values with `FILL_VAL`
 
-    # Returns: 
+--- 
 
-        -X: Array that is dimensioned (num_gates x num_features) where num_gates is the number of valid 
-            (non-missing, meeting NCP/PGG thresholds) the function finds, and num_features is the 
-            number of features specified in the argument file to calculate. 
+# Returns: 
 
-        -Y: IF HAS_MANUAL_QC == true, will return Y, array containing 1 if a datapoint was retained 
-            during manual QC, and 0 otherwise. 
+    -X: Array that is dimensioned (num_gates x num_features) where num_gates is the number of valid 
+        (non-missing, meeting NCP/PGG thresholds) the function finds, and num_features is the 
+        number of features specified in the argument file to calculate. 
 
-        -INDEXER: Based on remove_variable as described above, contains boolean array specifiying
-                  where in the scan features valid data and where does not. 
+    -Y: IF HAS_MANUAL_QC == true, will return Y, array containing 1 if a datapoint was retained 
+        during manual QC, and 0 otherwise. 
 
+    -INDEXER: Based on remove_variable as described above, contains boolean array specifiying
+                where in the scan features valid data and where does not. 
 """
 function process_single_file(cfrad::NCDataset, argfile_path::String; 
     HAS_MANUAL_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
