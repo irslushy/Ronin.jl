@@ -424,7 +424,8 @@ module Ronin
 
     """
     Simple function that opens a given h5 file with feature data and applies a specific model to it. 
-    Returns a tuple of `predictions, targets`. 
+    Returns a tuple of `predictions, targets`. Also contains the ability to write these predictions and solutions 
+    out to a separate h5 file. 
 
     # Required arguments 
     ```julia
@@ -437,15 +438,33 @@ module Ronin
     ```
     Location of h5 file containing input features. 
 
+    # Optional Keyword Arguments 
+    ```julia 
+    write_out::Bool = false
+    ```
+    Whether or not to write the results out to a file 
+
+    ```julia
+    outfile::String = Path to write results to if write_out == true 
+    ```
+    Results will be written in the h5 format with the name "Predicitions" and "Ground Truth" 
     """
-    function predict_with_model(model_path::String, input_h5::String)
+    function predict_with_model(model_path::String, input_h5::String; write_out::Bool=false, outfile::String="_.h5")
         joblib = pyimport("joblib")
         input_h5 = h5open(input_h5)
         X = input_h5["X"][:,:]
-        Y = input_h5["Y"][:]
+        Y = input_h5["Y"][:,:][:]
         
         new_model = joblib.load(model_path)
         predictions = pyconvert(Vector{Float64}, new_model.predict(X))
+        close(input_h5)
+        if write_out 
+            h5open(outfile, "w") do f
+                f["Predictions"] = predictions 
+                f["Ground Truth"] = Y
+            end 
+        end 
+
         return((predictions, Y))
     end 
 
