@@ -815,15 +815,19 @@ module Ronin
     ```julia
     output_file::String = "_.h5" 
     ```
-
     Location to write calculated output features to. 
+
+    ```julia
+    col_subset = : 
+    ```
+    Subset of columns of `X` array to input to model. 
 
     Also contains all keyword arguments for calculate_features 
     
     """
     function evaluate_model(model_path::String, input_file_dir::String, config_file_path::String; mode="C",
         HAS_MANUAL_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
-        QC_variable="VG", remove_variable = "VV", replace_missing = false, output_file = "_.h5", write_out=false)
+        QC_variable="VG", remove_variable = "VV", replace_missing = false, output_file = "_.h5", write_out=false, col_subset=:)
 
         joblib = pyimport("joblib") 
         curr_model = joblib.load(model_path)
@@ -842,7 +846,7 @@ module Ronin
 
         input_h5 = h5open(input_file_dir)
 
-        X = input_h5["X"][:,:]
+        X = input_h5["X"][:,col_subset]
         Y = input_h5["Y"][:,:]
 
         close(input_h5) 
