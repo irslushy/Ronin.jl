@@ -375,6 +375,11 @@ module Ronin
     verify_out::String="model_verification.h5"
     ```
     If `verify`, the location to output this verification to. 
+
+    ```julia
+    col_subset=: 
+    ```
+    Set of columns from `input_h5` to train model on. Useful if one wishes to train a model while excluding some features from a training set. 
     """
     function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5", col_subset=:)
 
