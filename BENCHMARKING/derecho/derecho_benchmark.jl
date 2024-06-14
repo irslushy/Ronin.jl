@@ -7,8 +7,7 @@ derecho_file_path = "/glade/u/home/ischluesche/Ronin.jl/BENCHMARKING/NOAA_benchm
 task_path = "./derecho_tasks.txt"
 currset = NCDataset(derecho_file_path)
 
-@btime calculate_features("derecho_file_path", task_path, outfile="garbage.h5", HAS_MANUAL_QC=true;
+@btime calculate_features(derecho_file_path, task_path, outfile="garbage.h5", HAS_MANUAL_QC=true;
                             verbose=true, REMOVE_LOW_NCP=true, REMOVE_HIGH_PGG = true, QC_variable ="VG", 
                             remove_variable = "VG", replace_missing=false, write_out=false, threaded = true)
-@btime process_single_file_threaded(currset, task_path; HAS_MANUAL_QC=true, REMOVE_LOW_NCP=true, REMOVE_HIGH_PGG=true, QC_variable="VG", 
-remove_variable="VEL")
+
