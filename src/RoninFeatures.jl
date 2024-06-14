@@ -772,8 +772,8 @@ function process_single_file_threaded(cfrad::NCDataset, argfile_path::String;
     ###Array to hold PGG for indexing  
     PGG = Matrix{Float64}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
 
-    PGG_Completed_Flag = false 
-    NCP_Completed_Flag = false 
+    PGG_Completed_Flag = "PGG" in tasks  
+    NCP_Completed_Flag = "NCP" in tasks 
     ##To support threading, and because things may occur in a nonstandard order due to scheduling, 
     ##threaded function returns dictionary of ["task" => vals]. Then, merge dictionaries and loop through tasks one more time 
     ##Tasks should already be ensured to be valid given the get_task_params function 
@@ -789,63 +789,56 @@ function process_single_file_threaded(cfrad::NCDataset, argfile_path::String;
         X[:, i] = master_dict[task]
     end 
     
-    return(X) 
+    starttime = time() 
 
-    # ###Uses INDEXER to remove data not meeting basic quality thresholds
-    # ###A value of 0 in INDEXER will remove the data from training/evaluation 
-    # ###by the subsequent random forest model 
+    VT = cfrad[remove_variable][:]
+    INDEXER = [ismissing(x) ? false : true for x in VT]
+  
+    starttime=time()
 
-    # ###Begin by simply removing the gates where no velocity is found 
-    # #println("REMOVING MISSING DATA BASED ON $(remove_variable)...")
-    # starttime = time() 
+    if (REMOVE_LOW_NCP)
+        if (NCP_Completed_Flag) 
+            INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
+        else 
+            NCP = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_ncp(cfrad)[:]]
+            INDEXER[INDEXER] = [ x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
+        end 
+    end
 
-    # VT = cfrad[remove_variable][:]
-    # INDEXER = [ismissing(x) ? false : true for x in VT]
-    
-    # starttime=time()
-
-    # if (REMOVE_LOW_NCP)
-    #     if (NCP_Completed_Flag) 
-    #         INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
-    #     else 
-    #         NCP = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_ncp(cfrad)[:]]
-    #         INDEXER[INDEXER] = [ x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
-    #     end 
-    # end
-
-    # if (REMOVE_HIGH_PGG)
+    if (REMOVE_HIGH_PGG)
         
-    #     if (PGG_Completed_Flag)
-    #         INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
-    #     else
-    #         PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
-    #         INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
-    #     end
+        if (PGG_Completed_Flag)
+            INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
+        else
+            PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
+            INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
+        end
 
-    # end
+    end
     
-    # X = X[INDEXER, :] 
+    X = X[INDEXER, :] 
 
     
-    # ###Allows for use with already QC'ed files to output a Y array for 
-    # ###model training 
-    # if HAS_MANUAL_QC
+    ###Allows for use with already QC'ed files to output a Y array for 
+    ###model training 
+    if HAS_MANUAL_QC
 
-    #     #println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
-    #     startTime = time() 
-    #     ###try catch block here to see if the scan has manual QC
-    #     ###Filter the input arrays first 
-    #     VG = cfrad[QC_variable][:][INDEXER]
-    #     VV = cfrad[remove_variable][:][INDEXER]
+        #println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
+        startTime = time() 
+        ###try catch block here to see if the scan has manual QC
+        ###Filter the input arrays first 
+        VG = cfrad[QC_variable][:][INDEXER]
+        VV = cfrad[remove_variable][:][INDEXER]
 
-    #     Y = reshape([ismissing(x) ? 0 : 1 for x in VG .- VV][:], (:, 1))
-    #     calc_length = time() - startTime
+        Y = reshape([ismissing(x) ? 0 : 1 for x in VG .- VV][:], (:, 1))
+        calc_length = time() - startTime
 
-    #     return(X, Y, INDEXER)
-    # else
+        return(X, Y, INDEXER)
+    else
 
-    #     return(X, false, INDEXER)
-    # end 
+        return(X, false, INDEXER)
+    end 
+
 end 
 
 function ok(data) 
