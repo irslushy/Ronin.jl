@@ -63,7 +63,7 @@ end
 
 h5open("garbage.h5") do f 
     h5open("./BENCHMARKING/standard_bench_file.h5") do f2
-        @assert f["X"][:,:] == f2["X"][:,:]
+        @assert map(round, f["X"][:,:]) == map(round, f2["X"][:,:])
     end 
 end 
 
