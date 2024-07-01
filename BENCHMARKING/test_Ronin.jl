@@ -59,6 +59,13 @@ h5open("garbage.h5") do f
     end
 end 
 
+###Also ensure that both are equal to a pre-set version of the benchmark 
+
+h5open("garbage.h5") do f 
+    h5open("standard_bench_file.h5") do f2
+        @assert f["X"][:,:] == f2["X"][:,:]
+    end 
+end 
 
 X = Matrix{Float64}(undef, 0, 6)
 Y = Matrix{Float64}(undef, 0, 1)
