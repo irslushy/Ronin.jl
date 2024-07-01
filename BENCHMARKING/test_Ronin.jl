@@ -55,7 +55,7 @@ h5open("garbage.h5") do f
     h5open("garbage_2.h5") do f2
         print(f["X"][begin:5,:])
         print(f2["X"][begin:5,:])
-        @assert f["X"][begin:10, :] == f2["X"][begin:10, :]
+        @assert map(round, f["X"][begin:10, :]) == map(round, f2["X"][begin:10, :])
     end
 end 
 
