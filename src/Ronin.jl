@@ -334,7 +334,6 @@ module Ronin
         if write_out
             println()
             println("WRITING DATA TO FILE OF SHAPE $(size(X))")
-            X
             println("X TYPE: $(typeof(X))")
             write_dataset(fid, "X", X)
             write_dataset(fid, "Y", Y)
@@ -833,13 +832,16 @@ module Ronin
         curr_model = joblib.load(model_path)
 
     if mode == "C"
+        if (!HAS_MANUAL_QC)
+            Exception("ERROR: PLEASE SET HAS_MANUAL_QC TO TRUE, AND SPECIFY QC_VARIABLE")
+        end 
 
-        X, Y = calculate_features(input_file_dir, config_file_path, output_file=output_file, HAS_MANUAL_QC = HAS_MANUAL_QC 
+        X, Y = calculate_features(input_file_dir, config_file_path, output_file, HAS_MANUAL_QC 
                         ; verbose=verbose, REMOVE_LOW_NCP=REMOVE_LOW_NCP, REMOVE_HIGH_PGG=REMOVE_HIGH_PGG, 
                         QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
                         write_out=write_out )
 
-
+        print("Y: $(length(Y))") 
         probs = pyconvert(Matrix{Float64}, curr_model.predict_proba(X))
 
     elseif mode == "H"
