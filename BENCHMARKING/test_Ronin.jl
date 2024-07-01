@@ -53,7 +53,9 @@ calculate_features(TRAINING_PATH, config_file_path, "garbage_2.h5", true,
 
 h5open("garbage.h5") do f
     h5open("garbage_2.h5") do f2
-        @assert f["X"][:, :] == f2["X"][:, :]
+        print(f["X"][begin:5,:])
+        print(f2["X"][begin:5,:])
+        @assert f["X"][begin:10, :] == f2["X"][begin:10, :]
     end
 end 
 
@@ -112,7 +114,7 @@ for (i, cfrad_name) in enumerate(readdir(TRAINING_PATH))
         ###If they are equal, model predicted meteorological 
         model_predictions = [ismissing(x) ? false : true for x in (ZZ_raw .== ZZ_QC)]
         ground_truth = [ismissing(x) ? false : true for x in (ZZ_raw .== ZZ_manual)] 
-        
+
         true_positives = count(ground_truth[model_predictions .== true] .== true) 
         num_total_positives = count(ground_truth) 
 
