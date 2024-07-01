@@ -53,8 +53,6 @@ calculate_features(TRAINING_PATH, config_file_path, "garbage_2.h5", true,
 
 h5open("garbage.h5") do f
     h5open("garbage_2.h5") do f2
-        print(count(f["X"][:, :] .== f2["X"][:,:]))
-        print(length(f["X"][:,:][:]))
         @assert f["X"][:, :] == f2["X"][:, :]
     end
 end 
@@ -62,7 +60,7 @@ end
 ###Also ensure that both are equal to a pre-set version of the benchmark 
 
 h5open("garbage.h5") do f 
-    h5open("standard_bench_file.h5") do f2
+    h5open("./BENCHMARKING/standard_bench_file.h5") do f2
         @assert f["X"][:,:] == f2["X"][:,:]
     end 
 end 
@@ -76,6 +74,10 @@ indexer_list = []
 ###Get verification for each of the cfradials 
 for cfrad_name in readdir(TRAINING_PATH)
 
+    if cfrad_name == ".tmp_hawkedit"
+        rm(TRAINING_PATH * cfrad_name, force=true, recursive = true) 
+        continue
+    end 
     Dataset(TRAINING_PATH * cfrad_name) do f
         X_new, Y_new, indexer = Ronin.process_single_file(f, config_file_path; HAS_MANUAL_QC=true, REMOVE_LOW_NCP=true, REMOVE_HIGH_PGG=true, QC_variable = "VG", 
                                                     remove_variable = "VV", replace_missing = false) 
@@ -95,6 +97,10 @@ min_retain_threshold = .9
 ###Now, let's check that we can QC a scan. We'll use the trained ELDORA model here. 
 for (i, cfrad_name) in enumerate(readdir(TRAINING_PATH))
 
+    if cfrad_name[1] == '.'
+        continue
+    end 
+
     QC_scan(TRAINING_PATH * cfrad_name, config_file_path, sample_model)
 
     NCDataset(TRAINING_PATH * cfrad_name) do currset
@@ -106,7 +112,7 @@ for (i, cfrad_name) in enumerate(readdir(TRAINING_PATH))
         ###If they are equal, model predicted meteorological 
         model_predictions = [ismissing(x) ? false : true for x in (ZZ_raw .== ZZ_QC)]
         ground_truth = [ismissing(x) ? false : true for x in (ZZ_raw .== ZZ_manual)] 
-
+        
         true_positives = count(ground_truth[model_predictions .== true] .== true) 
         num_total_positives = count(ground_truth) 
 
@@ -115,13 +121,15 @@ for (i, cfrad_name) in enumerate(readdir(TRAINING_PATH))
 
         pos_retained_frac = true_positives / num_total_positives
         neg_removed_frac = true_negatives / num_total_negatives
-        
-        
-        @assert pos_retained_frac > min_retain_threshold
-        @assert neg_removed_frac > min_bad_threshold
+    
 
         printstyled("Positive Retained Fraction: " * string(pos_retained_frac), color = :green) 
         printstyled("Negative Removed Fraction: " * string(neg_removed_frac), color=:green)
+
+        @assert pos_retained_frac > min_retain_threshold
+        @assert neg_removed_frac > min_bad_threshold
+
+        
         
     end 
     
