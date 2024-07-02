@@ -520,9 +520,21 @@ module Ronin
     will be assigned non-meteorological. At least in the ELDORA case, aggressive thresholds (.8 and above) have been found to maintain 
     >92% of the meteorological data while removing >99% of non-meteorological gates. 
 
+    ```julia 
+    output_mask::Bool = true
+    ```
+    Whether or not to output the QC preditions from the model output. A value of 0 means the model predicted the gate to
+    be non-meteorological, 1 corresponds to predicted meteorological data, and -1 denotes data that did not meet minimum
+    thresholds
+
+    ```julia
+    mask_name::String = "QC_MASK"
+    ``` 
+    What to name the output QC predictions. 
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
-                     QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Float64 = .5)
+                     QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Float64 = .5, output_mask::Bool = true,
+                     mask_name::String = "QC_MASK_2")
 
         
         joblib = pyimport("joblib") 
@@ -598,6 +610,32 @@ module Ronin
                 printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
                 println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
 
+            end 
+
+            if output_mask
+
+                MASK = fill(-1, cfrad_dims)[:]
+                MASK[indexer] = predictions 
+                MASK = reshape(MASK, cfrad_dims)
+
+                try
+                    println("Writing Mask")
+
+                    NEW_FIELD_ATTRS = Dict(
+                    "units" => "Unitless",
+                    "long_name" => "Ronin Quality Control mask"
+                    )   
+                    defVar(input_cfrad, mask_name, MASK, ("range", "time"), fillvalue=-1; attrib=NEW_FIELD_ATTRS)
+                catch e
+
+                ###Simply overwrite the variable 
+                    if e.msg == "NetCDF: String match to name in use"
+                        println("Already exists... overwriting") 
+                        input_cfrad[mask_name][:,:] =  MASK 
+                    else 
+                        throw(e)
+                    end 
+                end
             end 
             
             close(input_cfrad)
