@@ -124,6 +124,7 @@ for (i, cfrad_name) in enumerate(readdir(TRAINING_PATH))
         neg_removed_frac = true_negatives / num_total_negatives
     
 
+
         printstyled("Positive Retained Fraction: " * string(pos_retained_frac) * "\n", color = :green) 
         printstyled("Negative Removed Fraction: " * string(neg_removed_frac) * "\n", color=:green)
 
