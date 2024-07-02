@@ -21,7 +21,7 @@ module Ronin
     export split_training_testing! 
     export train_model 
     export QC_scan 
-    export predict_with_model, evaluate_model, get_feature_importance, process_single_file_threaded
+    export predict_with_model, evaluate_model, get_feature_importance
 
 
     """
@@ -95,7 +95,7 @@ module Ronin
     """
     function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_MANUAL_QC::Bool; 
         verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false, QC_variable::String = "VG", remove_variable::String = "VV", 
-        replace_missing = false, write_out=true, threaded = false)
+        replace_missing = false, write_out=true)
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -131,7 +131,7 @@ module Ronin
             try 
                 cfrad = Dataset(path) 
                 pathstarttime=time() 
-                (newX, newY, indexer) = process_single_file_threaded(cfrad, argument_file; 
+                (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
                                             HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                             REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
                                             replace_missing=replace_missing)
@@ -523,6 +523,7 @@ module Ronin
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
                      QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Float64 = .5)
+
         
         joblib = pyimport("joblib") 
         new_model = joblib.load(model_path)
@@ -841,7 +842,7 @@ module Ronin
                         QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
                         write_out=write_out )
 
-        print("Y: $(length(Y))") 
+    
         probs = pyconvert(Matrix{Float64}, curr_model.predict_proba(X))
 
     elseif mode == "H"

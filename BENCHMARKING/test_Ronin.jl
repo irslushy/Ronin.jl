@@ -16,7 +16,6 @@ sample_model = "./BENCHMARKING/benchmark_setup/benchmark_model.joblib"
 
 ###NEED TO ALLOW THIS TO IGNORE COMMENTS 
 tasks = Ronin.get_task_params(config_file_path)
-print(tasks)
 
 placeholder_matrix = allowmissing(ones(3,3))
 
@@ -125,8 +124,8 @@ for (i, cfrad_name) in enumerate(readdir(TRAINING_PATH))
         neg_removed_frac = true_negatives / num_total_negatives
     
 
-        printstyled("Positive Retained Fraction: " * string(pos_retained_frac), color = :green) 
-        printstyled("Negative Removed Fraction: " * string(neg_removed_frac), color=:green)
+        printstyled("Positive Retained Fraction: " * string(pos_retained_frac) * "\n", color = :green) 
+        printstyled("Negative Removed Fraction: " * string(neg_removed_frac) * "\n", color=:green)
 
         @assert pos_retained_frac > min_retain_threshold
         @assert neg_removed_frac > min_bad_threshold
