@@ -523,6 +523,7 @@ module Ronin
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
                      QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Float64 = .5)
+
         
         joblib = pyimport("joblib") 
         new_model = joblib.load(model_path)
@@ -841,7 +842,7 @@ module Ronin
                         QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
                         write_out=write_out )
 
-        print("Y: $(length(Y))") 
+
         probs = pyconvert(Matrix{Float64}, curr_model.predict_proba(X))
 
     elseif mode == "H"

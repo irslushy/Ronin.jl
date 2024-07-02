@@ -1,5 +1,6 @@
 using Missings
 using NCDatasets
+using Base.Threads 
 
 center_weight::Float64 = 0
 
@@ -45,6 +46,28 @@ REMOVE_HIGH_PGG::Bool = true
 REPLACE_MISSING_WITH_FILL::Bool = false 
 
 
+
+
+
+function missing_std(data)
+
+    if count(ismissing, data) == length(data)
+        return FILL_VAL 
+    end 
+    
+    std(skipmissing(data))
+end 
+
+function missing_avg(data)
+
+    if count(ismissing, data) == length(data)
+        return FILL_VAL  
+    end 
+
+    mean(skipmissing(data))
+end 
+
+
 ##Returns flattened version of NCP 
 function calc_ncp(data::NCDataset)
     ###Some ternary operator + short circuit trickery here 
@@ -66,52 +89,22 @@ end
 
 
 function _weighted_func(var::AbstractMatrix{Union{Float32, Missing}}, weights::Matrix{Union{Missing, Float64}}, func)
-        
-    valid_weights = .!map(ismissing, weights)
-
-    updated_weights = weights[valid_weights]
-    updated_var = var[valid_weights]
-
-    valid_idxs = .!map(ismissing, updated_var)
-
     ##Returns 0 when missing, 1 when not 
-    return(func(updated_var[valid_idxs] .* updated_weights[valid_idxs]))
+    return(func(var .* weights))
 end
 
 function _weighted_func(var, weights, func)
-    valid_weights = .!map(ismissing, weights)
-
-    updated_weights = weights[valid_weights]
-    updated_var = var[valid_weights]
-
-    valid_idxs = .!map(ismissing, updated_var)
-
-    ##Returns 0 when missing, 1 when not 
-    return(func(updated_var[valid_idxs] .* updated_weights[valid_idxs]))
+    return(func(var .* weights))
 end
 
 function _weighted_func(var::Matrix{Float64}, weights::Matrix{Union{Missing, Float64}}, func)
-    
-    valid_weights = .!map(ismissing, weights)
-
-    updated_weights = weights[valid_weights]
-    updated_var = var[valid_weights]
-
-    valid_idxs = .!map(ismissing, updated_var)
-
-    ##Returns 0 when missing, 1 when not 
-    result = func(updated_var[valid_idxs] .* updated_weights[valid_idxs])
-    return result 
+    return(func(var .* weights))
 end
 
 
 function calc_iso(var::AbstractMatrix{Union{Missing, Float64}};
     weights::Matrix{Union{Missing, Float64}} = iso_weights, 
     window::Matrix{Union{Missing, Float64}} = iso_window)
-
-    # if size(weights) != window
-    #     error("Weight matrix does not equal window size")
-    # end
 
     missings = map((x) -> Float64(ismissing(x)), var)
     iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window) 
@@ -177,14 +170,11 @@ function prob_groundgate(elevation_angle, antenna_range, aircraft_height, azimut
     end 
 end 
 
+
 ##Calculate the windowed standard deviation of a given variablevariable 
 function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_weights, window = std_window)
 
-    if ( REPLACE_MISSING_WITH_FILL)
-        var[map(ismissing, var)] .= FILL_VAL
-    end 
-
-    mapwindow((x) -> _weighted_func(x, weights, std), var, window, border=Fill(missing))
+    mapwindow((x) -> _weighted_func(x, weights, missing_std), var, window, border=Fill(missing))
 end 
 
 ##Calculate the windowed standard deviation of a given variablevariable 
@@ -195,7 +185,7 @@ function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_win
         var[map(ismissing, var)] .= FILL_VAL
     end 
 
-    mapwindow((x) -> _weighted_func(x, weights, std), var, window, border=Fill(missing))
+    mapwindow((x) -> _weighted_func(x, weights, missing_std), var, window, border=Fill(missing))
 end 
 
 function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, window = avg_window)
@@ -204,7 +194,7 @@ function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, w
         var[map(ismissing, var)] .= FILL_VAL
     end 
 
-    mapwindow((x) -> _weighted_func(x, weights, mean), var, window, border=Fill(missing))
+    mapwindow((x) -> _weighted_func(x, weights, missing_avg), var, window, border=Fill(missing))
 end
 
 function calc_avg(var::Matrix{}; weights = avg_weights, window = avg_window)
@@ -214,7 +204,7 @@ function calc_avg(var::Matrix{}; weights = avg_weights, window = avg_window)
     end 
 
 
-    mapwindow((x) -> _weighted_func(x, weights, mean), var, window, border=Fill(missing))
+    @inbounds mapwindow((x) -> _weighted_func(x, weights, missing_avg), var, window, border=Fill(missing))
 end
 
 function calc_pgg(cfrad::NCDataset)
@@ -229,7 +219,7 @@ function calc_pgg(cfrad::NCDataset)
     azimuths = repeat(transpose(cfrad["azimuth"][:]), num_ranges, 1)
     
     ##This would return 
-    return(map((w,x,y,z) -> prob_groundgate(w,x,y,z), elevs, ranges, heights, azimuths))
+    @inbounds return(map((w,x,y,z) -> prob_groundgate(w,x,y,z), elevs, ranges, heights, azimuths))
 end 
 
 function calc_aht(cfrad::NCDataset)
@@ -241,7 +231,7 @@ function calc_aht(cfrad::NCDataset)
     ranges = repeat(cfrad["range"][:], 1, num_times)
     heights = repeat(transpose(cfrad["altitude"][:]), num_ranges, 1)
 
-    return(map((x,y,z) -> airborne_ht(Float64(x),Float64(y),Float64(z)), elevs, ranges, heights))
+    @inbounds return(map((x,y,z) -> airborne_ht(Float64(x),Float64(y),Float64(z)), elevs, ranges, heights))
 
 end 
 
@@ -333,7 +323,6 @@ function get_task_params(params_file, variablelist; delimiter=",")
             end
         end 
     end 
-    print(length(task_param_list))
     return(task_param_list)
 end 
 
@@ -748,5 +737,163 @@ end
     ##If there are Missing values in either the variable or the weights, they will be ignored 
     
     #precompile(_weighted_func, (AbstractMatrix{}, Matrix{}))
+
+
+"""
+    Likely unstable! Don't use for operations yet 
+"""
+# function process_single_file_threaded(cfrad::NCDataset, argfile_path::String; 
+#     HAS_MANUAL_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
+#         QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false)
+
+   
+#     if replace_missing
+#         global REPLACE_MISSING_WITH_FILL = true 
+#     else 
+#         global REPLACE_MISSING_WITH_FILL = false 
+#     end 
+
+#     valid_vars = keys(cfrad)
+#     tasks = get_task_params(argfile_path, valid_vars)
+    
+    
+#     ###Features array 
+#     X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
+
+#     ###Array to hold PGG for indexing  
+#     PGG = Matrix{Float64}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
+
+#     PGG_Completed_Flag = "PGG" in tasks  
+#     NCP_Completed_Flag = "NCP" in tasks 
+#     ##To support threading, and because things may occur in a nonstandard order due to scheduling, 
+#     ##threaded function returns dictionary of ["task" => vals]. Then, merge dictionaries and loop through tasks one more time 
+#     ##Tasks should already be ensured to be valid given the get_task_params function 
+    
+#     master_dict = Dict() 
+
+#     ###Let's try beginning by copying the input data from the input netCDF
+
+#     # data_arrs = [] 
+#     # functype = [] 
+
+#     # for task in tasks
+
+#     #     regex_match = match(func_regex, task)
+
+#     #     if (!isnothing(regex_match))
+
+#     #         func = Symbol(func_prefix * lowercase(regex_match[1]))
+#     #         var = regex_match[2]
+
+#     #         push!(data_arrs, copy(cfrad[var]))
+#     #         push!(functype, "D")
+
+#     #     else if (task in valid_derived_params)
+
+
+#     dict_list = fetch.([Threads.@spawn process_task_thrd(task, cfrad) for task in collect(tasks)])
+
+#     for dict in dict_list
+#         master_dict = merge(master_dict, dict) 
+#     end 
+
+#     for (i, task) in enumerate(tasks)
+#         X[:, i] = master_dict[task]
+#     end 
+    
+#     starttime = time() 
+
+#     VT = cfrad[remove_variable][:]
+#     INDEXER = [ismissing(x) ? false : true for x in VT]
+  
+#     starttime=time()
+
+#     if (REMOVE_LOW_NCP)
+#         if (NCP_Completed_Flag) 
+#             INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
+#         else 
+#             NCP = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_ncp(cfrad)[:]]
+#             INDEXER[INDEXER] = [ x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
+#         end 
+#     end
+
+#     if (REMOVE_HIGH_PGG)
+        
+#         if (PGG_Completed_Flag)
+#             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
+#         else
+#             PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
+#             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
+#         end
+
+#     end
+    
+#     X = X[INDEXER, :] 
+
+    
+#     ###Allows for use with already QC'ed files to output a Y array for 
+#     ###model training 
+#     if HAS_MANUAL_QC
+
+#         #println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
+#         startTime = time() 
+#         ###try catch block here to see if the scan has manual QC
+#         ###Filter the input arrays first 
+#         VG = cfrad[QC_variable][:][INDEXER]
+#         VV = cfrad[remove_variable][:][INDEXER]
+
+#         Y = reshape([ismissing(x) ? 0 : 1 for x in VG .- VV][:], (:, 1))
+#         calc_length = time() - startTime
+
+#         return(X, Y, INDEXER)
+#     else
+
+#         return(X, false, INDEXER)
+#     end 
+
+# end 
+
+# function ok(data) 
+#     return data[1,1]
+# end 
+
+# function threading_test(input_set::NCDataset)
+#     results = fetch.([Threads.@spawn ok(data["DBZ"][:,:]) for i in 1:4])
+# end 
+
+
+# ###Processes given task and returns flattened array 
+# function process_task_thrd(task, cfrad)
+
+#     regex_match = match(func_regex, task) 
+        
+#     if (!isnothing(regex_match))
+
+#             startTime = time() 
+
+#             func = Symbol(func_prefix * lowercase(regex_match[1]))
+#             var = regex_match[2]
+#             curr_val = @eval $cfrad[$var] 
+        
+#         raw = @eval $func($curr_val[:,:])[:]
+#         filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+        
+#         any(isnan, filled) ? throw("NAN ERROR") : 
+
+#         return(Dict(task => filled[:]))
+
+#     elseif (task in valid_derived_params)
+
+#         func = Symbol(func_prefix * lowercase(task))
+#         raw = @eval $func($cfrad)[:]
+#         return(Dict(task => [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]))
+
+    
+# #     ###Otherwise it's just a variable from the cfrad 
+#     else 
+#         return(Dict(task => [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]))
+#     end 
+
+# end 
 
 
