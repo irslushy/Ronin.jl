@@ -5,7 +5,7 @@ Ronin (Random forest Optimized Nonmeteorological IdentificatioN) is a package th
 
 # Workflow Walkthrough 
 
-<img src="../imgs/Ronin_flowchart.png">
+![Roninflowchart](../imgs/Ronin_flowchart.png)
 
 ## Preparing input data 
 
