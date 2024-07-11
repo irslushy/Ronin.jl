@@ -21,7 +21,7 @@ module Ronin
     export split_training_testing! 
     export train_model 
     export QC_scan 
-    export predict_with_model, evaluate_model, get_feature_importance
+    export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
 
 
     """
@@ -224,44 +224,43 @@ module Ronin
     # Optional keyword arguments 
 
     ```julia
-    verbose::Bool
+    verbose::Bool = false 
     ```
     If true, will print out timing information as each file is processed 
 
     ```julia
-    REMOVE_LOW_NCP::Bool
+    REMOVE_LOW_NCP::Bool = false 
     ```
 
     If true, will ignore gates with Normalized Coherent Power/Signal Quality Index below a threshold specified in RQCFeatures.jl
 
     ```julia
-    REMOVE_HIGH_PGG::Bool
+    REMOVE_HIGH_PGG::Bool = false
     ```
 
     If true, will ignore gates with Probability of Ground Gate (PGG) values at or above a threshold specified in RQCFeatures.jl 
 
     ```julia
-    QC_variable::String
+    QC_variable::String = "VG"
     ```
     Name of variable in input NetCDF files that has been quality-controlled. 
 
     ```julia
-    remove_variable::String
-    ```
+    remove_variable::String = "VV"
 
     Name of a raw variable in input NetCDF files. Used to determine where missing data exists in the input sweeps. 
     Data at these locations will be removed from the outputted features. 
 
     ```
-    replace_missing 
+    replace_missing::Bool = false 
     ```
     Whether or not to replace MISSING values with FILL_VAL in spatial parameter calculations
     Default value: False 
     """
     function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
-        ,output_file::String, HAS_MANUAL_QC::Bool; verbose=false,
-         REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", 
-         replace_missing=false, write_out=true)
+        ,output_file::String, HAS_MANUAL_QC::Bool; verbose::Bool=false,
+         REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable::String = "VG", remove_variable::String = "VV", 
+         replace_missing::Bool=false, write_out::Bool=true)
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -1034,5 +1033,138 @@ module Ronin
 
     end 
 
+
+
+
+    """
+    Function to process a set of cfradial files that have already been interactively QC'ed and return information about where errors 
+    occur in the files relative to model predictions. Requires a pre-trained model and configuration, as well as scans that 
+    have already been interactively quality controlled. 
+
+    #Required Arguments 
+    ```julia
+    file_path::String
+    ```
+    Path to file or directory of cfradials to be processed
+
+    ```julia
+    config_file_path::String
+    ```
+    Path to configuration file containing parameters to calculate for the cfradials 
+
+    ```julia 
+    model_path::String
+    ```
+    Path to pre-trained random forest model 
+
+    # Optional keyword arguments 
+
+    ```julia
+    indexer_var::String="VV" 
+    ```
+    Name of a raw variable in input NetCDF files. Used to determine where missing data exists in the input sweeps. 
+    Data at these locations will be removed from the outputted features. 
+
+    ```julia
+    QC_variable::String="VG"
+    ```
+    Name of variable in CFRadial files that has already been interactively QC'ed. Used as the verification data. 
+
+    ```julia
+    decision_threshold::Float64 = .5
+    ```
+    Fraction of decision trees in the RF model that must agree for a given gate to be classified as meteorological. 
+    For example, at .5, >=50% of the trees must predict that a gate is meteorological for it to be classified as such, 
+    otherwise it is assigned as non-meteorological. 
+
+    # Returns 
+    Returns a tuple of (X, Y, indexer, predictions, false_positives, false_negatives) 
+    Where
+
+    ```julia
+    X::Matrix{Float64}
+    ```
+    Each row in X represents a different radar gate, while each column a different parameter as according to the order 
+    that they are listed in the config_file_path 
+
+    ```julia
+    Y::Matrix{Int64} 
+    ```
+    Each row in Y represents a radar gate, and its classification according to the interactive QC applied to it. 
+
+    ```julia 
+    indexer::Matrix{Int64}
+    ```
+    For all gates in the input directory, contains 1 if the gate passed basic QC thresholds (Low NCP, etc.) and 0 if it did not. 
+    Useful if one wishes to reconstruct 2D scan from flattened data 
+
+    ```julia
+    predictions:Matrix{Int32}
+    ```
+    Trained machine learning model predictions for the classification of a gate - `1` if predicted to be 
+        meteorological data, `0` otherwise. 
+
+    ```julia 
+    false_postivies::BitMatrix
+    ```
+    Which gates were misclassified as meteorological data relative to interactive QC
+
+    ```julia 
+    false_negatives::BitMatrix
+    ```
+    Which gates were misclassified as non-meteorological data relative to interactive QC 
+    """
+    function error_characteristics(file_path::String, config_file_path::String, model_path::String;
+        indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float64 = .5)
+
+        ###Do we need to reconstruct the original scans? Probably not..... 
+        joblib = pyimport("joblib") 
+        new_model = joblib.load(model_path)
+
+        paths = Vector{String}() 
+        
+        if isdir(file_path) 
+            paths = parse_directory(file_path)
+        else 
+            paths = [file_path]
+        end 
+
+        tasks = get_task_params(config_file_path)
+
+        X = Matrix{Float64}(undef,0,length(tasks))
+        Y = Matrix{Int32}(undef,0,1) 
+        indexer = Matrix{Int32}(undef,0,1)
+        predictions = Matrix{Int32}(undef, 0, 1) 
+
+        for path in paths   
+            input_cfrad = NCDataset(path, "a")
+            cfrad_dims = (input_cfrad.dim["range"], input_cfrad.dim["time"])
+            ###Todo: What do I need to do for parsed args here 
+            println("\r\nPROCESSING: $(path)")
+            starttime=time()
+            
+            Xn, Yn, indexern = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, REMOVE_LOW_NCP = true, remove_variable=indexer_var, HAS_MANUAL_QC = true)
+            println("\r\nCompleted in $(time()-starttime ) seconds")
+            ##Load saved RF model 
+            ##assume that default SYMBOL for saved model is savedmodel
+            ##For binary classifications, 1 will be at index 2 in the predictions matrix 
+            met_predictions = pyconvert(Matrix{Float64}, new_model.predict_proba(Xn))[:, 2]
+            predictionsn = met_predictions .> decision_threshold
+
+            ###If we wish to return features for error diagnostics, we simply return X which is the features array, 
+            ###Y which are the correct values, the indexer which shows where data was taken out and where it was not, 
+            ###and the model predictions 
+
+            X  = vcat(X, Xn)
+            Y  = vcat(Y, Yn)
+            indexer = vcat(indexer, indexern)
+            predictions = vcat(predictions, predictionsn)
+        end 
+
+        false_positives_idx = (predictions .== 1) .& (Y .== 0)
+        false_negatives_idx = (predictions .== 0) .& (Y .== 1)
+
+        return (X, Y, indexer, predictions, false_positives_idx, false_negatives_idx) 
+    end 
 
 end

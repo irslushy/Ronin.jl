@@ -22,6 +22,7 @@ get_feature_importance(::String, ::Vector{Float64})
 QC_scan
 predict_with_model(::String, ::String)
 evaluate_model(::String, ::String, ::String)
+error_characteristics(::String, ::String, ::String) 
 ```
 
 ## Non-user facing

@@ -3,6 +3,8 @@ using Ronin
 using Missings 
 using HDF5 
 using NCDatasets
+using BenchmarkTools 
+using StatsBase
 
 ###Will undergo a basic training/QC pipeline. Model is not meant to output 
 ###Correct results, but rather simply show that it can produce data, train a model, 
@@ -134,8 +136,18 @@ for (i, cfrad_name) in enumerate(readdir(TRAINING_PATH))
         
         
     end 
-    
 end 
+
+###New test in order to test threaded QC_scan feature 
+times = []
+for i in 1:10
+    starttime = time()
+    QC_scan(TRAINING_PATH, config_file_path, sample_model)
+    push!(times, round(time() - starttime, sigdigits=4))
+end 
+
+printstyled("QC_SCAN AVERAGE TIME FOR 10 SCANS: $(mean(times)) seonds \n", color=:green)
+
 
 
 
