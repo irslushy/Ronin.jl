@@ -1154,7 +1154,8 @@ module Ronin
             println("\r\nPROCESSING: $(path)")
             starttime=time()
             
-            Xn, Yn, indexern = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, REMOVE_LOW_NCP = true, remove_variable=indexer_var, HAS_MANUAL_QC = true)
+            Xn, Yn, indexern = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, QC_variable = QC_variable,
+                                                        REMOVE_LOW_NCP = true, remove_variable=indexer_var, HAS_MANUAL_QC = true)
             println("\r\nCompleted in $(time()-starttime ) seconds")
             ##Load saved RF model 
             ##assume that default SYMBOL for saved model is savedmodel
