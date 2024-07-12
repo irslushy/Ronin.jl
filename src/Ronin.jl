@@ -1153,24 +1153,31 @@ module Ronin
             ###Todo: What do I need to do for parsed args here 
             println("\r\nPROCESSING: $(path)")
             starttime=time()
+            try
             
-            Xn, Yn, indexern = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, QC_variable = QC_variable,
-                                                        REMOVE_LOW_NCP = true, remove_variable=indexer_var, HAS_MANUAL_QC = true)
-            println("\r\nCompleted in $(time()-starttime ) seconds")
-            ##Load saved RF model 
-            ##assume that default SYMBOL for saved model is savedmodel
-            ##For binary classifications, 1 will be at index 2 in the predictions matrix 
-            met_predictions = pyconvert(Matrix{Float64}, new_model.predict_proba(Xn))[:, 2]
-            predictionsn = met_predictions .> decision_threshold
+                Xn, Yn, indexern = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, QC_variable = QC_variable,
+                                                            REMOVE_LOW_NCP = true, remove_variable=indexer_var, HAS_MANUAL_QC = true)
+                println("\r\nCompleted in $(time()-starttime ) seconds")
 
-            ###If we wish to return features for error diagnostics, we simply return X which is the features array, 
-            ###Y which are the correct values, the indexer which shows where data was taken out and where it was not, 
-            ###and the model predictions 
+                    ##Load saved RF model 
+                ##assume that default SYMBOL for saved model is savedmodel
+                ##For binary classifications, 1 will be at index 2 in the predictions matrix 
+                met_predictions = pyconvert(Matrix{Float64}, new_model.predict_proba(Xn))[:, 2]
+                predictionsn = met_predictions .> decision_threshold
 
-            X  = vcat(X, Xn)
-            Y  = vcat(Y, Yn)
-            indexer = vcat(indexer, indexern)
-            predictions = vcat(predictions, predictionsn)
+                ###If we wish to return features for error diagnostics, we simply return X which is the features array, 
+                ###Y which are the correct values, the indexer which shows where data was taken out and where it was not, 
+                ###and the model predictions 
+
+                X  = vcat(X, Xn)
+                Y  = vcat(Y, Yn)
+                indexer = vcat(indexer, indexern)
+                predictions = vcat(predictions, predictionsn)
+            
+            catch e
+                printstyled("POSSIBLE ERROR WITH FILE AT: $(path)...\nCONTINUING\n", color=:red)
+            end 
+            
         end 
 
         false_positives_idx = (predictions .== 1) .& (Y .== 0)
