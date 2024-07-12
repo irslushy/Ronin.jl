@@ -1115,7 +1115,8 @@ module Ronin
     Which gates were misclassified as non-meteorological data relative to interactive QC 
     """
     function error_characteristics(file_path::String, config_file_path::String, model_path::String;
-        indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float64 = .5)
+        indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float64 = .5, write_out=false,
+        output_name="Model_Error_Characteristics.h5")
 
         ###Do we need to reconstruct the original scans? Probably not..... 
         joblib = pyimport("joblib") 
@@ -1163,6 +1164,23 @@ module Ronin
 
         false_positives_idx = (predictions .== 1) .& (Y .== 0)
         false_negatives_idx = (predictions .== 0) .& (Y .== 1)
+
+
+        if write_out
+            println("Writing Data to $(output_name)")
+    
+            h5open(output_name, "w") do f
+                f["X"] = X[:,:]
+                f["Y"] = Y[:]
+                f["indexer"] = Vector{Int32}(indexer[:])
+                f["predictions"] = Vector{Int32}(predictions[:])
+                f["false_positive_index"] = Vector{Int32}(false_positives_idx[:])
+                f["false_negatives_idx"] = Vector{Int32}(false_negatives_idx[:])
+                attributes(f)["FEATURE_NAMES"] = tasks 
+            end
+    
+            printstyled("Successfully Output Model Evaluation Data to $(output_name)\n", color=:green) 
+        end 
 
         return (X, Y, indexer, predictions, false_positives_idx, false_negatives_idx) 
     end 
