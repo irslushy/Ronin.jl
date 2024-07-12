@@ -1077,6 +1077,16 @@ module Ronin
     For example, at .5, >=50% of the trees must predict that a gate is meteorological for it to be classified as such, 
     otherwise it is assigned as non-meteorological. 
 
+    ```julia
+    write_out::Bool=false
+    ```
+    Whether or not to output the model evaluation data to an HDF5 file 
+
+    ```julia
+    output_name::String="Model_Error_Characteristics.h5"
+    ```
+    Name/Path of desired HDF5 output location 
+
     # Returns 
     Returns a tuple of (X, Y, indexer, predictions, false_positives, false_negatives) 
     Where
@@ -1115,8 +1125,8 @@ module Ronin
     Which gates were misclassified as non-meteorological data relative to interactive QC 
     """
     function error_characteristics(file_path::String, config_file_path::String, model_path::String;
-        indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float64 = .5, write_out=false,
-        output_name="Model_Error_Characteristics.h5")
+        indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float64 = .5, write_out::Bool=false,
+        output_name::String="Model_Error_Characteristics.h5")
 
         ###Do we need to reconstruct the original scans? Probably not..... 
         joblib = pyimport("joblib") 
