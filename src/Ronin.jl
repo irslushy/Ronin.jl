@@ -2,6 +2,8 @@ module Ronin
 
     include("./RoninFeatures.jl") 
     include("./Io.jl")
+    include("./DecisionTree/DecisionTree.jl")
+ 
 
     using NCDatasets
     using ImageFiltering
@@ -13,6 +15,7 @@ module Ronin
     using MLJ, MLJLinearModels, CategoricalArrays
     using PythonCall
     using DataFrames
+    using JLD2
 
     export get_NCP, airborne_ht, prob_groundgate
     export calc_avg, calc_std, calc_iso, process_single_file 
@@ -59,43 +62,47 @@ module Ronin
     # Optional keyword arguments 
 
     ```julia
-    verbose::Bool
+    verbose::Bool=false
     ```
     If true, will print out timing information as each file is processed 
 
     ```julia
-    REMOVE_LOW_NCP::Bool
+    REMOVE_LOW_NCP::Bool=false
     ```
 
     If true, will ignore gates with Normalized Coherent Power/Signal Quality Index below a threshold specified in RQCFeatures.jl
 
     ```julia
-    REMOVE_HIGH_PGG::Bool
+    REMOVE_HIGH_PGG::Bool=false
     ```
-
     If true, will ignore gates with Probability of Ground Gate (PGG) values at or above a threshold specified in RQCFeatures.jl 
 
     ```julia
-    QC_variable::String
+    QC_variable::String="VG"
     ```
     Name of variable in input NetCDF files that has been quality-controlled. 
 
     ```julia
-    remove_variable::String
+    remove_variable::String="VV"
     ```
 
     Name of a raw variable in input NetCDF files. Used to determine where missing data exists in the input sweeps. 
     Data at these locations will be removed from the outputted features. 
 
-    ```
-    replace_missing 
+    ```julia
+    replace_missing::Bool=false
     ```
     Whether or not to replace MISSING values with FILL_VAL in spatial parameter calculations
     Default value: False 
+
+    ```julia
+    write_out::Bool=true
+    ```
+    Whether or not to write features out to file 
     """
     function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_MANUAL_QC::Bool; 
         verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false, QC_variable::String = "VG", remove_variable::String = "VV", 
-        replace_missing = false, write_out=true)
+        replace_missing::Bool = false, write_out::Bool=true)
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -256,6 +263,11 @@ module Ronin
     ```
     Whether or not to replace MISSING values with FILL_VAL in spatial parameter calculations
     Default value: False 
+
+    ```julia
+    write_out::Bool = true 
+    ```
+    Whether or not to write out to file. 
     """
     function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
         ,output_file::String, HAS_MANUAL_QC::Bool; verbose::Bool=false,
@@ -378,13 +390,24 @@ module Ronin
     col_subset=: 
     ```
     Set of columns from `input_h5` to train model on. Useful if one wishes to train a model while excluding some features from a training set. 
+
+    ```julia
+    n_trees::Int = 21
+    ```
+    Number of trees in the Random Forest ensemble 
+
+    ```julia
+    max_depth::Int = 14
+    ```
+    Maximum node depth in each tree in RF ensemble 
+
+    ```julia
+    balance_weight::Bool = true
+    ```
+    Whether or not to apply balanced class weighting (as according to ScikitLearn documentation) 
     """
-    function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5", col_subset=:)
-
-
-        ###Import necessecary Python modules 
-        joblib = pyimport("joblib")
-        ensemble = pyimport("sklearn.ensemble")
+    function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5", col_subset=:,
+                        n_trees::Int = 21, max_depth::Int=14, balance_weight::Bool=true)
 
         ###Load the data
         radar_data = h5open(input_h5)
@@ -394,27 +417,37 @@ module Ronin
         X = read(radar_data["X"])[: , col_subset]
         Y = read(radar_data["Y"])
 
-        model = ensemble.RandomForestClassifier(n_estimators = 21, max_depth = 14, random_state = 50, class_weight = "balanced")
+        model = DecisionTree.RandomForestClassifier(n_trees=n_trees, max_depth=max_depth, rng=50)
+
+        if balance_weight
+            counts = [sum(.! Vector{Bool}(Y[:])), sum(Vector{Bool}(Y[:]))]
+            dub = 2 * counts
+            weights = [sum(counts[2] ./ dub), sum(counts[1] ./ dub)]
+            class_weights = [target ? weights[1] : weights[2] for target in Vector{Bool}(Y[:])]
+        else
+            class_weights = ones(length(Y[:]))
+        end 
 
         println("FITTING MODEL")
         startTime = time() 
-        model.fit(X, reshape(Y, length(Y),))
+        DecisionTree.fit!(model, X, reshape(Y, length(Y),), class_weights)
+
         println("COMPLETED FITTING MODEL IN $((time() - startTime)) seconds")
         println() 
 
 
         println("MODEL VERIFICATION:")
-        predicted_Y = pyconvert(Vector{Float64}, model.predict(X))
+        predicted_Y = DecisionTree.predict(model, X) 
         accuracy = sum(predicted_Y .== Y) / length(Y)
         println("ACCURACY ON TRAINING SET: $(round(accuracy * 100, sigdigits=3))%")
         println()
 
 
-        println("SAVING MODEL: ") 
-        joblib.dump(model, model_location)
+        printstyled("SAVING MODEL TO: $(model_location) \n", color=:green) 
+        save_object(model_location, model)
 
         if (verify) 
-            ###NEW: Write out data to HDF5 files for further processing 
+            ###NEW: Write out data to HDF5 files for further processing
             println("WRITING VERIFICATION DATA TO $(verify_out)" )
             fid = h5open(verify_out, "w")
             HDF5.write_dataset(fid, "Y_PREDICTED", predicted_Y)
@@ -453,7 +486,8 @@ module Ronin
     Results will be written in the h5 format with the name "Predicitions" and "Ground Truth" 
     """
     function predict_with_model(model_path::String, input_h5::String; write_out::Bool=false, outfile::String="_.h5")
-        joblib = pyimport("joblib")
+       
+        
         input_h5 = h5open(input_h5)
         X = input_h5["X"][:,:]
         Y = input_h5["Y"][:,:][:]
@@ -535,9 +569,7 @@ module Ronin
                      QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Float64 = .5, output_mask::Bool = true,
                      mask_name::String = "QC_MASK_2")
 
-        
-        joblib = pyimport("joblib") 
-        new_model = joblib.load(model_path)
+        new_model = load_object(model_path) 
 
         paths = Vector{String}() 
         if isdir(file_path) 
@@ -561,7 +593,7 @@ module Ronin
             ##Load saved RF model 
             ##assume that default SYMBOL for saved model is savedmodel
             ##For binary classifications, 1 will be at index 2 in the predictions matrix 
-            met_predictions = pyconvert(Matrix{Float64}, new_model.predict_proba(X))[:, 2]
+            met_predictions = DecisionTree.predict_proba(new_model, X)[:, 2]
             predictions = met_predictions .> decision_threshold
 
             ##QC each variable in VARIALBES_TO_QC
@@ -808,10 +840,6 @@ module Ronin
 
     end 
 
-
-
-
-
     """
 
     Function that takes in a given model, directory containing either cfradials or an already processed h5 file, 
@@ -866,77 +894,78 @@ module Ronin
         HAS_MANUAL_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
         QC_variable="VG", remove_variable = "VV", replace_missing = false, output_file = "_.h5", write_out=false, col_subset=:)
 
-        joblib = pyimport("joblib") 
-        curr_model = joblib.load(model_path)
+        model = load_object(model_path) 
 
-    if mode == "C"
-        if (!HAS_MANUAL_QC)
-            Exception("ERROR: PLEASE SET HAS_MANUAL_QC TO TRUE, AND SPECIFY QC_VARIABLE")
+        if mode == "C"
+
+            if (!HAS_MANUAL_QC)
+                Exception("ERROR: PLEASE SET HAS_MANUAL_QC TO TRUE, AND SPECIFY QC_VARIABLE")
+            end 
+
+            X, Y = calculate_features(input_file_dir, config_file_path, output_file, HAS_MANUAL_QC 
+                            ; verbose=verbose, REMOVE_LOW_NCP=REMOVE_LOW_NCP, REMOVE_HIGH_PGG=REMOVE_HIGH_PGG, 
+                            QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
+                            write_out=write_out )
+
+            
+            probs = DecisionTree.predict_proba(model, X) 
+
+        elseif mode == "H"
+
+            input_h5 = h5open(input_file_dir)
+
+            X = input_h5["X"][:,col_subset]
+            Y = input_h5["Y"][:,:]
+
+            close(input_h5) 
+
+            probs = DecisionTree.predict_proba(model, X) 
+
+        else 
+            print("ERROR: UNKNOWN MODE")
         end 
 
-        X, Y = calculate_features(input_file_dir, config_file_path, output_file, HAS_MANUAL_QC 
-                        ; verbose=verbose, REMOVE_LOW_NCP=REMOVE_LOW_NCP, REMOVE_HIGH_PGG=REMOVE_HIGH_PGG, 
-                        QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
-                        write_out=write_out )
+        ###Now, iterate through probabilities and calculate predictions for each one. 
+        proba_seq = .1:.1:.9
+        met_probs = probs[:, 2]
 
 
-        probs = pyconvert(Matrix{Float64}, curr_model.predict_proba(X))
+        list_names = ["prob_level", "true_pos", "false_pos", "true_neg", "false_neg", "prec", "rec", "removal"]
+        for name in (Symbol(_) for _ in list_names)
+            @eval $name = []
+        end 
 
-    elseif mode == "H"
+        for prob in proba_seq
 
-        input_h5 = h5open(input_file_dir)
+            met_predictions = met_probs .>= prob 
+            print(length(met_predictions))
+            print(length(Y))
+            tpc = count(Y[met_predictions .== 1] .== met_predictions[met_predictions .== 1])
+            fpc = count(Y[met_predictions .== 1] .!= met_predictions[met_predictions .== 1])
 
-        X = input_h5["X"][:,col_subset]
-        Y = input_h5["Y"][:,:]
+            push!(true_pos, tpc)
+            push!(false_pos, fpc)
 
-        close(input_h5) 
+            tnc =  count(Y[met_predictions .== 0] .== met_predictions[met_predictions .== 0])
+            fnc =  count(Y[met_predictions .== 0] .!= met_predictions[met_predictions .== 0])
 
-        probs = pyconvert(Matrix{Float64}, curr_model.predict_proba(X))
+            push!(true_neg, tnc)
+            push!(false_neg, fnc) 
 
-    else 
-        print("ERROR: UNKNOWN MODE")
-    end 
+            push!(prob_level, prob) 
 
-    ###Now, iterate through probabilities and calculate predictions for each one. 
-    proba_seq = .1:.1:.9
-    met_probs = probs[:, 2]
+            push!(prec, tpc / (tpc + fpc) )
+            push!(rec, tpc / (tpc + fnc))
 
+            ###Removal is the fraction of true negatives of total negatives 
+            push!(removal, tnc / (tnc + fpc))
 
-    list_names = ["prob_level", "true_pos", "false_pos", "true_neg", "false_neg", "prec", "rec", "removal"]
-    for name in (Symbol(_) for _ in list_names)
-        @eval $name = []
-    end 
-
-    for prob in proba_seq
-
-        met_predictions = met_probs .>= prob 
-        print(length(met_predictions))
-        print(length(Y))
-        tpc = count(Y[met_predictions .== 1] .== met_predictions[met_predictions .== 1])
-        fpc = count(Y[met_predictions .== 1] .!= met_predictions[met_predictions .== 1])
-
-        push!(true_pos, tpc)
-        push!(false_pos, fpc)
-
-        tnc =  count(Y[met_predictions .== 0] .== met_predictions[met_predictions .== 0])
-        fnc =  count(Y[met_predictions .== 0] .!= met_predictions[met_predictions .== 0])
-
-        push!(true_neg, tnc)
-        push!(false_neg, fnc) 
-
-        push!(prob_level, prob) 
-
-        push!(prec, tpc / (tpc + fpc) )
-        push!(rec, tpc / (tpc + fnc))
-
-        ###Removal is the fraction of true negatives of total negatives 
-        push!(removal, tnc / (tnc + fpc))
-
-        ###I can likely make this better using some metaprogramming but it's fine for now 
+            ###I can likely make this better using some metaprogramming but it's fine for now 
 
         end 
+
         return(DataFrame(prob_level=prob_level, true_pos=true_pos, false_pos=false_pos, true_neg=true_neg, false_neg=false_neg, precision=prec,
-            recall=rec, removal=removal ))
+                recall=rec, removal=removal ))
      end 
 
 
@@ -991,7 +1020,7 @@ module Ronin
     function get_feature_importance(input_file_path::String, λs::Vector{Float64}; pred_threshold::Float64 = .5)
 
 
-        @load LogisticClassifier pkg=MLJLinearModels
+        MLJ.@load LogisticClassifier pkg=MLJLinearModels
 
         training_data = h5open(input_file_path)
         
@@ -1129,8 +1158,9 @@ module Ronin
         output_name::String="Model_Error_Characteristics.h5")
 
         ###Do we need to reconstruct the original scans? Probably not..... 
-        joblib = pyimport("joblib") 
-        new_model = joblib.load(model_path)
+       
+        new_model = load_object(model_path) 
+
 
         paths = Vector{String}() 
         
@@ -1162,7 +1192,7 @@ module Ronin
                     ##Load saved RF model 
                 ##assume that default SYMBOL for saved model is savedmodel
                 ##For binary classifications, 1 will be at index 2 in the predictions matrix 
-                met_predictions = pyconvert(Matrix{Float64}, new_model.predict_proba(Xn))[:, 2]
+                met_predictions = DecisionTree.predict_proba(new_model, Xn)[:, 2]
                 predictionsn = met_predictions .> decision_threshold
 
                 ###If we wish to return features for error diagnostics, we simply return X which is the features array, 
