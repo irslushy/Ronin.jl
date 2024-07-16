@@ -422,8 +422,9 @@ module Ronin
         if balance_weight
             counts = [sum(.! Vector{Bool}(Y[:])), sum(Vector{Bool}(Y[:]))]
             dub = 2 * counts
-            weights = [sum(counts[2] ./ dub), sum(counts[1] ./ dub)]
+            weights = [sum(counts[1] ./ dub), sum(counts[2] ./ dub)]
             class_weights = [target ? weights[1] : weights[2] for target in Vector{Bool}(Y[:])]
+           
         else
             class_weights = ones(length(Y[:]))
         end 
@@ -905,7 +906,7 @@ module Ronin
             X, Y = calculate_features(input_file_dir, config_file_path, output_file, HAS_MANUAL_QC 
                             ; verbose=verbose, REMOVE_LOW_NCP=REMOVE_LOW_NCP, REMOVE_HIGH_PGG=REMOVE_HIGH_PGG, 
                             QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
-                            write_out=write_out )
+                            write_out=write_out)
 
             
             probs = DecisionTree.predict_proba(model, X) 
