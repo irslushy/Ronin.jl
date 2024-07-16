@@ -330,7 +330,6 @@ module treeclassifier
             min_samples_split,
             min_purity_increase)
 
-
         root, indX = _fit(
             X, Y_, W,
             loss,

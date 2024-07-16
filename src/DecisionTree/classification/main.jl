@@ -83,6 +83,7 @@ function build_tree(
         loss                 = util.gini :: Function,
         rng                  = Random.GLOBAL_RNG) where {S, T, U} 
 
+    
     if max_depth == -1
         max_depth = typemax(Int)
     end
