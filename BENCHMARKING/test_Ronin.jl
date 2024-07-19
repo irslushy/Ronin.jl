@@ -12,7 +12,6 @@ using StatsBase
 
 TRAINING_PATH = "./BENCHMARKING/benchmark_cfrads/"
 config_file_path = "./BENCHMARKING/benchmark_setup/config.txt"
-sample_model = "./BENCHMARKING/benchmark_setup/benchmark_model.joblib"
 ###Read in tasks
 
 
@@ -73,6 +72,11 @@ Y = Matrix{Float64}(undef, 0, 1)
 
 y_list = []
 indexer_list = []
+
+
+###train a model 
+sample_model = "sample_model.jld2"
+train_model("garbage.h5", sample_model)
 
 ###Get verification for each of the cfradials 
 for cfrad_name in readdir(TRAINING_PATH)

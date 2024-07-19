@@ -16,7 +16,9 @@ module Ronin
     using PythonCall
     using DataFrames
     using JLD2
+    using DataStructures
 
+    
     export get_NCP, airborne_ht, prob_groundgate
     export calc_avg, calc_std, calc_iso, process_single_file 
     export parse_directory, get_num_tasks, get_task_params, remove_validation 
@@ -407,7 +409,7 @@ module Ronin
     Whether or not to apply balanced class weighting (as according to ScikitLearn documentation) 
     """
     function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5", col_subset=:,
-                        n_trees::Int = 21, max_depth::Int=14, balance_weight::Bool=true)
+                        n_trees::Int = 21, max_depth::Int=14, class_weights::Vector{Float32} = Vector{Float32}([1.,2.]))
 
         ###Load the data
         radar_data = h5open(input_h5)
@@ -418,15 +420,21 @@ module Ronin
         Y = read(radar_data["Y"])
 
         model = DecisionTree.RandomForestClassifier(n_trees=n_trees, max_depth=max_depth, rng=50)
-
-        if balance_weight
-            counts = [sum(.! Vector{Bool}(Y[:])), sum(Vector{Bool}(Y[:]))]
-            dub = 2 * counts
-            weights = [sum(counts[1] ./ dub), sum(counts[2] ./ dub)]
-            class_weights = [target ? weights[1] : weights[2] for target in Vector{Bool}(Y[:])]
+    
+        # if balance_weight 
+        #     counts = [sum(.! Vector{Bool}(Y[:])), sum(Vector{Bool}(Y[:]))]
+        #     dub = 2 * counts
+        #     weights = [sum(counts[1] ./ dub), sum(counts[2] ./ dub)]
+        #     class_weights = [target ? weights[1] : weights[2] for target in Vector{Bool}(Y[:])]
            
-        else
-            class_weights = ones(length(Y[:]))
+        # else
+        #     class_weights = ones(length(Y[:]))
+        # end 
+
+
+        if ! (length(Y) == length(class_weights))
+            printstyled("WARNING: class_weights of different length than targets.... Continiuing with no class weights...\n", color=:yellow)
+            class_weights = ones(length(Y))
         end 
 
         println("FITTING MODEL")
@@ -456,8 +464,37 @@ module Ronin
             close(fid) 
         end 
 
+        close(radar_data) 
     end     
 
+    # """
+    # Helper function that returns a Vector{Float32} of weights for a given number of targets
+    # in a classification problem. 
+
+    # # Required arguments: 
+    # ```julia
+    # filepath::String 
+    # ```
+    # Location of input h5 file containing information about targets of classification problem 
+
+    # ```julia
+    # target_name::String 
+    # ```
+    # Name of target variable in input h5 file 
+    # """
+    # function get_balanced_weights(filepath::String, target_name::String) 
+
+    #     h5open(filepath) do f
+    #         targets = f[target_name][:,:][:]
+
+    #         counts = [sum(.! Vector{Bool}(targets)), sum(Vector{Bool}(Y[:]))]
+    #         dub = 2 * counts
+    #         weights = [sum(counts[1] ./ dub), sum(counts[2] ./ dub)]
+    #         class_weights = [target ? weights[1] : weights[2] for target in Vector{Bool}(Y[:])]
+
+    #     end 
+
+    # end 
 
     """
     Simple function that opens a given h5 file with feature data and applies a specific model to it. 
@@ -890,10 +927,15 @@ module Ronin
 
     Also contains all keyword arguments for calculate_features 
     
+    ```julia 
+    proba_seq::StepRangeLen = .1:.1:.9
+    ```
+    Sequence of probabilities to iterate through when evaluating the model 
+    
     """
     function evaluate_model(model_path::String, input_file_dir::String, config_file_path::String; mode="C",
         HAS_MANUAL_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
-        QC_variable="VG", remove_variable = "VV", replace_missing = false, output_file = "_.h5", write_out=false, col_subset=:)
+        QC_variable="VG", remove_variable = "VV", replace_missing = false, output_file = "_.h5", write_out=false, col_subset=:, proba_seq::StepRangeLen = .1:.1:.9)
 
         model = load_object(model_path) 
 
@@ -927,7 +969,6 @@ module Ronin
         end 
 
         ###Now, iterate through probabilities and calculate predictions for each one. 
-        proba_seq = .1:.1:.9
         met_probs = probs[:, 2]
 
 
