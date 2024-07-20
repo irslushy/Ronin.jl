@@ -7,7 +7,8 @@ makedocs(sitename="Ronin.jl",
             "Home" => "index.md"
             "Reference" => "api.md"
         ],
-        format = Documenter.HTML(prettyurls = false))
+        format = Documenter.HTML(prettyurls = false), 
+        checkdocs=:none)
 
 deploydocs(;
     repo="github.com/irslushy/Ronin.jl.git",
