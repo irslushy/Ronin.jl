@@ -71,14 +71,21 @@ ___
 
 ## Notes on data conventions
 _______
-For the verification 'Y' array in the training scripts I have adopted the convention that 1 indicates METEOROLOGICAL DATA, and 0 indicates NON_METEOROLOGICAL DATA 
+Some important data convetions to make note of: 
 
-Furthermore, for QC-ed variables in the output files, the following is adopted:  
-
-FILL_VALUE: Removed during MLQC process or didn't meet QC thresholds 
-VALUE: Retained during MLQC process 
-
-Data is written out to NetCDF files to be CF-Compliant in Julia and other column-major languages, such that it has dimensions of (range x time). 
-However, if it were loaded in a row-major language, such as python, it would take on dimensions of (time x range). 
+* **Meteorological Data is referred to by 1 or `true`**
+* **Non-Meteorological Data is referred to by 0 or `false`**
+* **ELDORA**scan variable names: 
+    * Raw Velocity: **VV**
+    * QC'ed Velocity (Used for ground truth): **VG**
+    * Raw Reflectivity: **ZZ**
+    * QC'ed Reflectivity (Used for ground truth): **DBZ**
+    * Normalized Coherent Power/Signal Quality Index: **NCP**
+* **NOAA TDR** scan variable names: 
+    * Raw Velocity: **VEL**
+    * QC'ed Velocity (Used for ground truth): **VG**
+    * Raw Reflectivity: **DBZ**
+    * QC'ed Reflectivity: **ZZ**
+    * Normalized Coherent Power/Signal Quality Index: **SQI**
 
 
