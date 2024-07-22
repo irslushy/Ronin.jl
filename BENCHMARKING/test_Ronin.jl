@@ -12,8 +12,10 @@ using StatsBase
 
 TRAINING_PATH = "./BENCHMARKING/benchmark_cfrads/"
 config_file_path = "./BENCHMARKING/benchmark_setup/config.txt"
-###Read in tasks
 
+sample_model = "sample_model.jld2"
+feature_output = "garbage.h5"
+feature_output_2 = "garbage2.h5"
 
 ###NEED TO ALLOW THIS TO IGNORE COMMENTS 
 tasks = Ronin.get_task_params(config_file_path)
@@ -41,18 +43,18 @@ std_window::Tuple{Int64, Int64} = (5,5)
 weight_matrixes = [placeholder_matrix, placeholder_matrix, std_weights, placeholder_matrix, placeholder_matrix, iso_weights]
 
 calculate_features(TRAINING_PATH, tasks, weight_matrixes, 
-                    "garbage.h5", true; verbose=true, 
+                    feature_output, true; verbose=true, 
                     REMOVE_LOW_NCP = true, REMOVE_HIGH_PGG = true, 
                     QC_variable="VG", remove_variable="VV")
 
 
 ###Ensure multiple dispatch is functioning properly and giving us the same results 
-calculate_features(TRAINING_PATH, config_file_path, "garbage_2.h5", true,
+calculate_features(TRAINING_PATH, config_file_path, feature_output_2, true,
                     verbose=true, REMOVE_LOW_NCP = true, 
                     REMOVE_HIGH_PGG = true, remove_variable = "VV", QC_variable="VG")
 
-h5open("garbage.h5") do f
-    h5open("garbage_2.h5") do f2
+h5open(feature_output) do f
+    h5open(feature_output_2) do f2
         print(f["X"][begin:5,:])
         print(f2["X"][begin:5,:])
         @assert map(round, f["X"][begin:10, :]) == map(round, f2["X"][begin:10, :])
@@ -61,7 +63,7 @@ end
 
 ###Also ensure that both are equal to a pre-set version of the benchmark 
 
-h5open("garbage.h5") do f 
+h5open(feature_output) do f 
     h5open("./BENCHMARKING/standard_bench_file.h5") do f2
         @assert map(round, f["X"][:,:]) == map(round, f2["X"][:,:])
     end 
@@ -75,8 +77,7 @@ indexer_list = []
 
 
 ###train a model 
-sample_model = "sample_model.jld2"
-train_model("garbage.h5", sample_model)
+train_model(feature_output, sample_model)
 
 ###Get verification for each of the cfradials 
 for cfrad_name in readdir(TRAINING_PATH)
@@ -142,11 +143,17 @@ for (i, cfrad_name) in enumerate(readdir(TRAINING_PATH))
     end 
 end 
 
+###Test predict_with_model 
+_, __ = predict_with_model(sample_model, feature_output)
+
+###Make sure model evaluation and error characteristics at least can be called 
+evaluate_model(sample_model, feature_output, config_file_path, mode="H")
+
 ###New test in order to test threaded QC_scan feature 
 times = []
 for i in 1:10
     starttime = time()
-    QC_scan(TRAINING_PATH, config_file_path, sample_model)
+    QC_scan(TRAINING_PATH, config_file_path, sample_model, verbose=false)
     push!(times, round(time() - starttime, sigdigits=4))
 end 
 

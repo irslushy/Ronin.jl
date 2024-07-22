@@ -404,9 +404,9 @@ module Ronin
     Maximum node depth in each tree in RF ensemble 
 
     ```julia
-    balance_weight::Bool = true
+    class_weights::Vector{Float32} = Vector{Float32}([1.,2.])
     ```
-    Whether or not to apply balanced class weighting (as according to ScikitLearn documentation) 
+    Vector of class weights to apply to each observation. Should be 1 observation per sample in the input data files 
     """
     function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5", col_subset=:,
                         n_trees::Int = 21, max_depth::Int=14, class_weights::Vector{Float32} = Vector{Float32}([1.,2.]))
@@ -523,16 +523,19 @@ module Ronin
     ```
     Results will be written in the h5 format with the name "Predicitions" and "Ground Truth" 
     """
-    function predict_with_model(model_path::String, input_h5::String; write_out::Bool=false, outfile::String="_.h5")
+    function predict_with_model(model_path::String, input_h5::String; write_out::Bool=false, outfile::String="_.h5",
+                                probability_threshold::Float32 = Float32(.5))
        
-        
+        new_model = load_object(model_path) 
+
         input_h5 = h5open(input_h5)
         X = input_h5["X"][:,:]
         Y = input_h5["Y"][:,:][:]
-        
-        new_model = joblib.load(model_path)
-        predictions = pyconvert(Vector{Float64}, new_model.predict(X))
         close(input_h5)
+
+        met_probs = DecisionTree.predict_proba(new_model, X)[:, 2]
+        predictions  = met_probs .>= probability_threshold
+
         if write_out 
             h5open(outfile, "w") do f
                 f["Predictions"] = predictions 
@@ -602,10 +605,15 @@ module Ronin
     mask_name::String = "QC_MASK"
     ``` 
     What to name the output QC predictions. 
+
+    ```julia
+    verbose::Bool = false 
+    ````
+    Whether to output timing and scan information 
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
                      QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Float64 = .5, output_mask::Bool = true,
-                     mask_name::String = "QC_MASK_2")
+                     mask_name::String = "QC_MASK_2", verbose::Bool=false)
 
         new_model = load_object(model_path) 
 
@@ -624,10 +632,8 @@ module Ronin
 
             ###Will generally NOT return Y, but only (X, indexer)
             ###Todo: What do I need to do for parsed args here 
-            println("\r\nPROCESSING: $(path)")
             starttime=time()
             X, Y, indexer = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, REMOVE_LOW_NCP = true, remove_variable=indexer_var)
-            println("\r\nCompleted in $(time()-starttime ) seconds")
             ##Load saved RF model 
             ##assume that default SYMBOL for saved model is savedmodel
             ##For binary classifications, 1 will be at index 2 in the predictions matrix 
@@ -667,17 +673,21 @@ module Ronin
                 catch e
                     ###Simply overwrite the variable 
                     if e.msg == "NetCDF: String match to name in use"
-                        println("Already exists... overwriting") 
+                        if verbose
+                            println("Already exists... overwriting") 
+                        end 
                         input_cfrad[var*QC_suffix][:,:] = NEW_FIELD 
                     else 
                         throw(e)
                     end 
                 end 
-
-                
-                println()
-                printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
-                println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
+                if verbose
+                    println("\r\nPROCESSING: $(path)")
+                    println("\r\nCompleted in $(time()-starttime ) seconds")
+                    println()
+                    printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
+                    println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
+                end 
 
             end 
 
@@ -688,7 +698,9 @@ module Ronin
                 MASK = reshape(MASK, cfrad_dims)
 
                 try
-                    println("Writing Mask")
+                    if verbose 
+                        println("Writing Mask")
+                    end 
 
                     NEW_FIELD_ATTRS = Dict(
                     "units" => "Unitless",
@@ -699,7 +711,9 @@ module Ronin
 
                 ###Simply overwrite the variable 
                     if e.msg == "NetCDF: String match to name in use"
-                        println("Already exists... overwriting") 
+                        if verbose 
+                            println("Already exists... overwriting") 
+                        end 
                         input_cfrad[mask_name][:,:] =  MASK 
                     else 
                         throw(e)
@@ -1199,6 +1213,8 @@ module Ronin
         indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float64 = .5, write_out::Bool=false,
         output_name::String="Model_Error_Characteristics.h5")
 
+
+        ###We can probably refactor this honestly, just do predict with model 
         ###Do we need to reconstruct the original scans? Probably not..... 
        
         new_model = load_object(model_path) 
