@@ -25,7 +25,7 @@ module Ronin
     export calculate_features
     export split_training_testing! 
     export train_model 
-    export QC_scan 
+    export QC_scan, get_QC_mask 
     export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
 
 
@@ -104,7 +104,7 @@ module Ronin
     """
     function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_MANUAL_QC::Bool; 
         verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false, QC_variable::String = "VG", remove_variable::String = "VV", 
-        replace_missing::Bool = false, write_out::Bool=true)
+        replace_missing::Bool = false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String = "")
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -140,10 +140,21 @@ module Ronin
             try 
                 cfrad = Dataset(path) 
                 pathstarttime=time() 
-                (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
-                                            HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
-                                            REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
-                                            replace_missing=replace_missing)
+
+                if QC_mask
+                    currmask = cfrad[mask_name][:,:]
+                    (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
+                                                HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                                REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
+                                                replace_missing=replace_missing, feature_mask = currmask)
+                    
+                else 
+                    (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
+                                                HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                                REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
+                                                replace_missing=replace_missing)
+                end 
+
                 close(cfrad)
 
                 if verbose
@@ -274,7 +285,7 @@ module Ronin
     function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
         ,output_file::String, HAS_MANUAL_QC::Bool; verbose::Bool=false,
          REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable::String = "VG", remove_variable::String = "VV", 
-         replace_missing::Bool=false, write_out::Bool=true)
+         replace_missing::Bool=false, write_out::Bool=true, preapply_model::String = "", preapply_proba::Float32 = Float32(.5))
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -310,10 +321,11 @@ module Ronin
             try 
                 cfrad = Dataset(path) 
                 pathstarttime=time() 
+                
                 (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
                                             HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                             REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
-                                            replace_missing=replace_missing)
+                                            replace_missing=replace_missing, feature_mask = feature_mask)
                 close(cfrad)
 
                 if verbose
@@ -613,7 +625,7 @@ module Ronin
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
                      QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Float64 = .5, output_mask::Bool = true,
-                     mask_name::String = "QC_MASK_2", verbose::Bool=false)
+                     mask_name::String = "QC_MASK_2", verbose::Bool=false, REMOVE_HIGH_PGG::Bool = true, REMOVE_LOW_NCP::Bool = true)
 
         new_model = load_object(model_path) 
 
@@ -633,7 +645,7 @@ module Ronin
             ###Will generally NOT return Y, but only (X, indexer)
             ###Todo: What do I need to do for parsed args here 
             starttime=time()
-            X, Y, indexer = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, REMOVE_LOW_NCP = true, remove_variable=indexer_var)
+            X, Y, indexer = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, REMOVE_LOW_NCP = REMOVE_LOW_NCP, remove_variable=indexer_var)
             ##Load saved RF model 
             ##assume that default SYMBOL for saved model is savedmodel
             ##For binary classifications, 1 will be at index 2 in the predictions matrix 
@@ -1291,4 +1303,73 @@ module Ronin
         return (X, Y, indexer, predictions, false_positives_idx, false_negatives_idx) 
     end 
 
-end
+
+    function get_QC_mask(file_path::String, config_file_path::String, 
+        model_path::String; indexer_var::String="VV", decision_threshold::Float64 = .5, write_to_file::Bool=true, mask_name::String="QC_MASK")
+
+        new_model = load_object(model_path) 
+
+        paths = Vector{String}() 
+        if isdir(file_path) 
+            paths = parse_directory(file_path)
+        else 
+            paths = [file_path]
+        end 
+        
+
+        for path in paths 
+            ##Open in append mode so output variables can be written 
+            input_cfrad = NCDataset(path, "a")
+            cfrad_dims = (input_cfrad.dim["range"], input_cfrad.dim["time"])
+
+            ###Will generally NOT return Y, but only (X, indexer)
+            ###Todo: What do I need to do for parsed args here 
+            starttime=time()
+            X, Y, indexer = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, REMOVE_LOW_NCP = true, remove_variable=indexer_var)
+            ##Load saved RF model 
+            ##assume that default SYMBOL for saved model is savedmodel
+            ##For binary classifications, 1 will be at index 2 in the predictions matrix 
+            met_predictions = DecisionTree.predict_proba(new_model, X)[:, 2]
+            predictions = met_predictions .> decision_threshold
+            
+        
+
+            MASK = fill(-1, cfrad_dims)[:]
+            MASK[indexer] = predictions 
+            MASK = reshape(MASK, cfrad_dims)
+
+            try
+                if verbose 
+                    println("Writing Mask")
+                end 
+
+                NEW_FIELD_ATTRS = Dict(
+                "units" => "Unitless",
+                "long_name" => "Ronin Quality Control mask"
+                )   
+                defVar(input_cfrad, mask_name, MASK, ("range", "time"), fillvalue=-1; attrib=NEW_FIELD_ATTRS)
+            catch e
+
+            ###Simply overwrite the variable 
+                if e.msg == "NetCDF: String match to name in use"
+                    if verbose 
+                        println("Already exists... overwriting") 
+                    end 
+                    input_cfrad[mask_name][:,:] =  MASK 
+                else 
+                    close(input_cfrad) 
+                    throw(e)
+                end 
+            end 
+        
+            close(input_cfrad) 
+        end 
+    end 
+
+
+
+
+    
+end 
+
+    

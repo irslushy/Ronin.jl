@@ -45,7 +45,7 @@ REMOVE_HIGH_PGG::Bool = true
 ##Whether or not to replace a MISSING value with FILL in the spatial calculations 
 REPLACE_MISSING_WITH_FILL::Bool = false 
 
-
+placeholder_mask::Matrix{Bool} = [true true; false false]
 
 
 
@@ -440,7 +440,7 @@ For spatial parameters, whether or not to replace `missings` values with `FILL_V
 """
 function process_single_file(cfrad::NCDataset, argfile_path::String; 
     HAS_MANUAL_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
-     QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false)
+     QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false, feature_mask::Matrix{Bool} = placeholder_mask)
 
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
     #println("\r\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
@@ -479,16 +479,23 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
         ###and the full cfradial is passed because oftentimes multiple fields are requried 
         regex_match = match(func_regex, task) 
         
+
+        ###The only case that will need to be modified outside of the end indexer is the spatial parameters
         if (!isnothing(regex_match))
 
             startTime = time() 
 
             func = Symbol(func_prefix * lowercase(regex_match[1]))
             var = regex_match[2]
+            input_data = cfrad[var]
 
-            raw = @eval $func($cfrad[$var][:,:])[:]
+            if feature_mask != placeholder_mask 
+                input_data[feature_mask] .= missing 
+            end 
+
+            raw = @eval $func($input_data)[:]
             filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
-            
+        
             any(isnan, filled) ? throw("NAN ERROR") : 
 
             X[:, i] = filled[:]
@@ -533,8 +540,16 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
     starttime = time() 
 
     VT = cfrad[remove_variable][:]
-    INDEXER = [ismissing(x) ? false : true for x in VT]
-  
+    ##Initial gates to focus on 
+    mask_flat = feature_mask[:] 
+    ##If there is missing data for the indexer variable at the current gate, 
+    ##Get rid of it, otherwise go with the original value in the flat mask 
+    if feature_mask != placeholder_mask
+        INDEXER = [ismissing(VT[i]) ? false : mask_flat[i] for (i, _) in enumerate(mask_flat)]
+    else 
+        INDEXER = [ismissing(x) ? false : true for x in VT]
+    end 
+    
     starttime=time()
 
     if (REMOVE_LOW_NCP)
@@ -587,7 +602,7 @@ end
 ###weight_matrixes are also implicitly the window size 
 function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}; 
     HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", remove_missing=true,
-    replace_missing = false)
+    replace_missing = false, feature_mask::Matrix{Bool} = placeholder_mask)
 
 
     global REPLACE_MISSING_WITH_FILL
@@ -634,7 +649,12 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
 
             weight_matrix = weight_matrixes[i]
             window_size = size(weight_matrix)
-            raw = @eval $func($cfrad[$var][:,:]; weights = $weight_matrix, window = $window_size)[:]
+            curr_val = cfrad[var] 
+            if feature_mask != placeholder_mask
+                curr_val[placeholder_mask] .= missing 
+            end 
+
+            raw = @eval $func($curr_val; weights = $weight_matrix, window = $window_size)[:]
             filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
             
             any(isnan, filled) ? throw("NAN ERROR") : 
