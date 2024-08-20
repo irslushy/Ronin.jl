@@ -298,7 +298,6 @@ function get_task_params(params_file, variablelist; delimiter=",")
                 expr_ret = match(func_regex,token)
 
                 if token == ""
-                    print("CONTINUING") 
                     continue 
                 end 
                 ###If it is, make sure that it is both a valid function and a valid variable 
