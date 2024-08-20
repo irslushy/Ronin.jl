@@ -440,7 +440,8 @@ For spatial parameters, whether or not to replace `missings` values with `FILL_V
 """
 function process_single_file(cfrad::NCDataset, argfile_path::String; 
     HAS_MANUAL_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
-     QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false, feature_mask::Matrix{Bool} = placeholder_mask)
+     QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false,
+    mask_features::Bool = false, feature_mask::Matrix{Bool} = [true true ; false false;])
 
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
     #println("\r\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
@@ -453,7 +454,7 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
 
     valid_vars = keys(cfrad)
     tasks = get_task_params(argfile_path, valid_vars)
-    
+
     
     ###Features array 
     X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
@@ -487,13 +488,16 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
 
             func = Symbol(func_prefix * lowercase(regex_match[1]))
             var = regex_match[2]
-            input_data = cfrad[var]
-
-            if feature_mask != placeholder_mask 
-                input_data[feature_mask] .= missing 
+            
+            
+            if mask_features
+                currdat = cfrad[var][:,:]
+                currdat[mask] .= missing 
+                raw = @eval $func($currdat)[:]
+                print("PAST RAW")
+            else 
+                raw = @eval $func($cfrad[$var][:,:])[:]
             end 
-
-            raw = @eval $func($input_data)[:]
             filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
         
             any(isnan, filled) ? throw("NAN ERROR") : 
@@ -540,19 +544,26 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
     starttime = time() 
 
     VT = cfrad[remove_variable][:]
+    INDEXER = [ismissing(x) for x in VT]
     ##Initial gates to focus on 
-    mask_flat = feature_mask[:] 
-    ##If there is missing data for the indexer variable at the current gate, 
-    ##Get rid of it, otherwise go with the original value in the flat mask 
-    if feature_mask != placeholder_mask
-        INDEXER = [ismissing(VT[i]) ? false : mask_flat[i] for (i, _) in enumerate(mask_flat)]
+  
+    #If there is missing data for the indexer variable at the current gate, 
+    #Get rid of it, otherwise go with the original value in the flat mask 
+    if mask_features 
+        INDEXER = [INDEXER[i] ? false : maskval for (i, maskval) in enumerate(feature_mask[:])]
     else 
-        INDEXER = [ismissing(x) ? false : true for x in VT]
+        INDEXER = .! INDEXER
     end 
+
+    ###This got a little confusing so adding a comment here. 
+    ###INDEXER now contains a value of true for valid indices (meeting basic QC thresholds + non missing)
+    ###and false for invaldi indicies.  
     
     starttime=time()
 
     if (REMOVE_LOW_NCP)
+        ###Remove data that does not equal or exceed minimum NCP threshold 
+        ###Only need to do this for indicies that are true in INDEXER, as this is only remaining valid data
         if (NCP_Completed_Flag) 
             INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
         else 
@@ -563,6 +574,8 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
 
     if (REMOVE_HIGH_PGG)
         
+        ###Remove data that is not equal to or less than maximum probability of ground gate 
+        ###Only need to do this for indicies that are true in INDEXER, as this is only remaining valid data
         if (PGG_Completed_Flag)
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
         else
@@ -571,7 +584,8 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
         end
 
     end
-    
+
+    ###Subset the returned features to only the values that have cleared QC thresholds 
     X = X[INDEXER, :] 
 
     
@@ -597,12 +611,14 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
 end 
 
 
+
+
 ###Multiple dispatch version of process_single_file that allows user to specify a vector of weight matrixes 
 ###In this case will also pass the tasks to complete as a vector 
 ###weight_matrixes are also implicitly the window size 
 function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}; 
     HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", remove_missing=true,
-    replace_missing = false, feature_mask::Matrix{Bool} = placeholder_mask)
+    replace_missing = false,mask_features=false, feature_mask::Matrix{Bool} = placeholder_mask)
 
 
     global REPLACE_MISSING_WITH_FILL
@@ -649,12 +665,15 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
 
             weight_matrix = weight_matrixes[i]
             window_size = size(weight_matrix)
-            curr_val = cfrad[var] 
-            if feature_mask != placeholder_mask
-                curr_val[placeholder_mask] .= missing 
+           
+            if mask_features
+                currdat = cfrad[var][:,:]
+                currdat[mask] .= missing 
+                raw = @eval $func($currdat)[:]
+            else 
+                raw = @eval $func($curr_val; weights = $weight_matrix, window = $window_size)[:]
             end 
 
-            raw = @eval $func($curr_val; weights = $weight_matrix, window = $window_size)[:]
             filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
             
             any(isnan, filled) ? throw("NAN ERROR") : 
@@ -704,7 +723,14 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
         VT = cfrad[remove_variable][:]
         INDEXER = [ismissing(x) ? false : true for x in VT]
     else
-        INDEXER = fill(true, length(cfrad[remove_variable][:]))
+        INDEXER = fill(false, length(cfrad[remove_variable][:]))
+    end 
+    
+    if mask_features 
+        INDEXER = [INDEXER[i] ? false : maskval for (i, maskval) in enumerate(feature_mask[:]) ]
+    else
+        ##Otherwise, valid values are where they are NON-MISSING 
+        INDEXER = .! INDEXER 
     end 
     
     starttime=time()
@@ -752,6 +778,94 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
         return(X, false, INDEXER)
     end 
 end 
+
+
+function process_single_file_original(cfrad::NCDataset, argfile_path::String; 
+    HAS_MANUAL_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
+     QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false)
+
+    cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
+    #println("\r\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
+    
+    if replace_missing
+        global REPLACE_MISSING_WITH_FILL = true 
+    else 
+        global REPLACE_MISSING_WITH_FILL = false 
+    end 
+
+    valid_vars = keys(cfrad)
+    tasks = get_task_params(argfile_path, valid_vars)
+    
+    
+    ###Features array 
+    X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
+
+    ###Array to hold PGG for indexing  
+    PGG = Matrix{Float64}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
+
+    PGG_Completed_Flag = false 
+    NCP_Completed_Flag = false 
+
+    for (i, task) in enumerate(tasks)
+
+        ###Test to see if task involves a spatial parameter function call) 
+        ###A match implies spatial parameter, otherwise we assume it is just 
+        ###simple derived parameter.
+
+        ###Spatial parameters have general structure of calc_prm(cfrad_field)
+        ###Where PRM is the 3 letter abbreviation of the spatial paramter (AVG, STD, etc.)
+        ###and the cfrad_field is the variable we are performing this on 
+
+        ###Non-spatial parameters have general structure of calc_prm(cfrad)
+        ###Where PRM is the 3 lettter abbreviation of the parameter
+        ###and the full cfradial is passed because oftentimes multiple fields are requried 
+        regex_match = match(func_regex, task) 
+        
+        if (!isnothing(regex_match))
+
+            startTime = time() 
+
+            func = Symbol(func_prefix * lowercase(regex_match[1]))
+            var = regex_match[2]
+
+            raw = @eval $func($cfrad[$var][:,:])[:]
+            filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            
+            any(isnan, filled) ? throw("NAN ERROR") : 
+
+            X[:, i] = filled[:]
+            calc_length = time() - startTime
+
+
+        elseif (task in valid_derived_params)
+
+            startTime = time() 
+
+            func = Symbol(func_prefix * lowercase(task))
+            raw = @eval $func($cfrad)[:]
+            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+
+            if (task == "PGG")
+                PGG_Completed_Flag = true
+                PGG = X[:, i]
+            end 
+
+            if (task == "NCP" || task == "SQI") 
+                NCP_Completed_Flag = true 
+                NCP = X[:, i]
+            end 
+
+            calc_length = time() - startTime 
+        
+        ###Otherwise it's just a variable from the cfrad 
+        else 
+            startTime = time() 
+            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
+            calc_length = time() - startTime
+        end 
+    end
+end 
+
     ##Applies function given by func to the weighted version of the matrix given by var 
     ##Also applies controls for missing variables to both weights and var 
     ##If there are Missing values in either the variable or the weights, they will be ignored 
@@ -759,9 +873,9 @@ end
     #precompile(_weighted_func, (AbstractMatrix{}, Matrix{}))
 
 
-"""
-    Likely unstable! Don't use for operations yet 
-"""
+# """
+#     Likely unstable! Don't use for operations yet 
+# """
 # function process_single_file_threaded(cfrad::NCDataset, argfile_path::String; 
 #     HAS_MANUAL_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
 #         QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false)
