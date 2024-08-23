@@ -492,7 +492,7 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
             
             if mask_features
                 currdat = cfrad[var][:,:]
-                currdat[mask] .= missing 
+                currdat[feature_mask] .= missing 
                 raw = @eval $func($currdat)[:]
                 print("PAST RAW")
             else 
@@ -668,7 +668,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
            
             if mask_features
                 currdat = cfrad[var][:,:]
-                currdat[mask] .= missing 
+                currdat[feature_mask] .= missing 
                 raw = @eval $func($currdat)[:]
             else 
                 raw = @eval $func($curr_val; weights = $weight_matrix, window = $window_size)[:]
