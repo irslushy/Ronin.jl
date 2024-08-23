@@ -146,7 +146,7 @@ module Ronin
                     (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
                                                 HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                                 REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
-                                                replace_missing=replace_missing, feature_mask = currmask, mask_features = QC_mask)
+                                                replace_missing=replace_missing, feature_mask = currmask, mask_features = true)
                     
                 else 
                     (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
@@ -285,7 +285,7 @@ module Ronin
     function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
         ,output_file::String, HAS_MANUAL_QC::Bool; verbose::Bool=false,
          REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable::String = "VG", remove_variable::String = "VV", 
-         replace_missing::Bool=false, write_out::Bool=true, preapply_model::String = "", preapply_proba::Float32 = Float32(.5))
+         replace_missing::Bool=false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String="")
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()

@@ -618,7 +618,7 @@ end
 ###weight_matrixes are also implicitly the window size 
 function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}; 
     HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", remove_missing=true,
-    replace_missing = false,mask_features=false, feature_mask::Matrix{Bool} = placeholder_mask)
+    replace_missing = false,mask_features=false, feature_mask::Matrix{Bool} = [true true ; false false])
 
 
     global REPLACE_MISSING_WITH_FILL
@@ -671,7 +671,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
                 currdat[feature_mask] .= missing 
                 raw = @eval $func($currdat)[:]
             else 
-                raw = @eval $func($curr_val; weights = $weight_matrix, window = $window_size)[:]
+                raw = @eval $func($cfrad[$var][:,:], weights = $weight_matrix, window = $window_size)[:]
             end 
 
             filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
