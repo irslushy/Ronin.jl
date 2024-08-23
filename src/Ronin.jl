@@ -321,11 +321,23 @@ module Ronin
             try 
                 cfrad = Dataset(path) 
                 pathstarttime=time() 
+
+
+                if QC_mask
+                    currmask = Matrix{Bool}(.! map(ismissing, cfrad[mask_name][:,:]))
+                    (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
+                                                HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                                REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
+                                                replace_missing=replace_missing, feature_mask = currmask, mask_features = QC_mask)
+                    
+                else 
+                    (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
+                                                HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                                REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
+                                                replace_missing=replace_missing)
+                end 
+
                 
-                (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
-                                            HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
-                                            REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
-                                            replace_missing=replace_missing, feature_mask = feature_mask)
                 close(cfrad)
 
                 if verbose
