@@ -328,7 +328,7 @@ module Ronin
                     (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
                                                 HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                                 REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
-                                                replace_missing=replace_missing, feature_mask = currmask, mask_features = QC_mask)
+                                                replace_missing=replace_missing, feature_mask = currmask, mask_features = true)
                     
                 else 
                     (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
