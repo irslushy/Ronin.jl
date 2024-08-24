@@ -324,6 +324,7 @@ module Ronin
 
 
                 if QC_mask
+
                     currmask = Matrix{Bool}(.! map(ismissing, cfrad[mask_name][:,:]))
                     (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
                                                 HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 

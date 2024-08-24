@@ -671,7 +671,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
                 currdat[feature_mask] .= missing 
                 raw = @eval $func($currdat)[:]
             else 
-                raw = @eval $func($cfrad[$var][:,:], weights = $weight_matrix, window = $window_size)[:]
+                raw = @eval $func($cfrad[$var][:,:]; weights = $weight_matrix, window = $window_size)[:]
             end 
 
             filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
@@ -728,9 +728,6 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
     
     if mask_features 
         INDEXER = [INDEXER[i] ? false : maskval for (i, maskval) in enumerate(feature_mask[:]) ]
-    else
-        ##Otherwise, valid values are where they are NON-MISSING 
-        INDEXER = .! INDEXER 
     end 
     
     starttime=time()
