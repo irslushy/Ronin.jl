@@ -28,6 +28,37 @@ module Ronin
     export QC_scan, get_QC_mask 
     export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
     export process_single_file_original
+    export train_multi_model, ModelConfig
+
+
+
+
+    Base.@kwdef struct ModelConfig
+
+        num_models::Int64
+        model_output_paths::Vector{String}
+        met_probs::Vector{Float32} 
+
+        feature_output_paths::Vector{String} 
+        
+        input_path::String 
+        input_config::String 
+
+        verbose::Bool = true 
+        REMOVE_LOW_NCP::Bool = true 
+        REMOVE_HIGH_PGG::Bool = true 
+        QC_var::String = "VG"
+        remove_var::String = "VV" 
+        replace_missing::Bool = false 
+        write_out::Bool = true 
+        QC_mask::Bool = false 
+        mask_name::String ="" 
+
+        VARS_TO_QC::Vector{String} = ["VV", "ZZ"]
+        QC_SUFFIX::String = "_QC"
+        
+
+    end 
 
     """
 
@@ -1381,8 +1412,54 @@ module Ronin
 
 
 
+ 
+    function train_multi_model_bench(config::ModelConfig)
+        
+        @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
 
-    
+        full_start_time = time() 
+        ###Iteratively train models and apply QC_scan with the specified probabilites to train a multi-pass model 
+        ###pipeline 
+        for (i, model_path) in enumerate(config.model_output_paths)
+            
+           
+            out = config.feature_output_paths[i] 
+            
+            ##If execution proceeds past the first iteration, a composite model is being created, and 
+            ##so a further mask will be applied to the features 
+            if i > 1
+                QC_mask = true 
+            else 
+                QC_mask = false 
+            end 
+
+            QC_mask ? mask_name = config.mask_name : mask_name = ""
+
+            printstyled("\nCALCULATING FEATURES FOR PASS: $(i)\n", color=:green)
+            starttime = time() 
+
+            calculate_features(config.input_path, config.input_config, out, true; 
+                                verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
+                                REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
+                                remove_variable = config.remove_var, replace_missing = config.replace_missing,
+                                write_out = config.write_out, QC_mask = QC_mask, mask_name = mask_name)
+            printstyled("FINISHED CALCULATING FEATURES FOR PASS $(i) in $(round(time() - starttime, digits = 3)) seconds...\n", color=:green)
+            
+            printstyled("\nTRAINING MODEL FOR PASS: $(i)\n", color=:green)
+            starttime = time() 
+            ##Train model based on these features 
+            train_model(out, model_path)
+
+            ##Apply QC 
+            QC_scan(config.input_path, config.input_config, model_path;
+                    VARIABLES_TO_QC = config.VARS_TO_QC, QC_suffix = config.QC_SUFFIX,
+                    indexer_var = config.remove_var, decision_threshold = Float64(config.met_probs[i]))
+        
+        end 
+        printstyled("\n COMPLETED TRAINING MODEL IN $(round(time() - full_start_time, digits = 3)) seconds...\n", color=:green)
+
+    end 
+        
 end 
 
     
