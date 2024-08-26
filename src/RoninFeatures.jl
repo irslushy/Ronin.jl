@@ -723,7 +723,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
         VT = cfrad[remove_variable][:]
         INDEXER = [ismissing(x) ? false : true for x in VT]
     else
-        INDEXER = fill(false, length(cfrad[remove_variable][:]))
+        INDEXER = fill(true, length(cfrad[remove_variable][:]))
     end 
     
     if mask_features 

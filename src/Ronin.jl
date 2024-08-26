@@ -28,7 +28,7 @@ module Ronin
     export QC_scan, get_QC_mask 
     export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
     export process_single_file_original
-    export train_multi_model, ModelConfig
+    export train_multi_model, predict_multi_model, ModelConfig
 
 
 
@@ -37,12 +37,14 @@ module Ronin
 
         num_models::Int64
         model_output_paths::Vector{String}
-        met_probs::Vector{Float32} 
+        met_probs::Vector{Float64} 
 
         feature_output_paths::Vector{String} 
         
         input_path::String 
         input_config::String 
+
+        scan_dims::Tuple{Int64}
 
         verbose::Bool = true 
         REMOVE_LOW_NCP::Bool = true 
@@ -163,7 +165,8 @@ module Ronin
     
         newX = X = Matrix{Float64}(undef,0,output_cols)
         newY = Y = Matrix{Int64}(undef, 0,1) 
-    
+        newIdx = index = Matrix{Bool}(undef,0,1)
+
         
         starttime = time() 
     
@@ -174,13 +177,13 @@ module Ronin
 
                 if QC_mask
                     currmask = Matrix{Bool}(.! map(ismissing, cfrad[mask_name][:,:]))
-                    (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
+                    (newX, newY, newIdx) = process_single_file(cfrad, argument_file; 
                                                 HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                                 REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing, feature_mask = currmask, mask_features = true)
                     
                 else 
-                    (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
+                    (newX, newY, newIdx) = process_single_file(cfrad, argument_file; 
                                                 HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                                 REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing)
@@ -206,6 +209,7 @@ module Ronin
 
             X = vcat(X, newX)::Matrix{Float64}
             Y = vcat(Y, newY)::Matrix{Int64}
+            index = vcat(index, newIdx)::Matrix{Bool}
 
         end 
     
@@ -219,7 +223,6 @@ module Ronin
         if write_out
             println()
             println("WRITING DATA TO FILE OF SHAPE $(size(X))")
-            X
             println("X TYPE: $(typeof(X))")
             write_dataset(fid, "X", X)
             write_dataset(fid, "Y", Y)
@@ -344,7 +347,6 @@ module Ronin
     
         newX = X = Matrix{Float64}(undef,0,output_cols)
         newY = Y = Matrix{Int64}(undef, 0,1) 
-    
         
         starttime = time() 
     
@@ -783,6 +785,67 @@ module Ronin
     end 
 
 
+    function QC_scan(features::Matrix{Float64}, INDEXER::Matrix{Bool}, config::ModelConfig)
+        
+        
+        new_model = load_object(model_path)
+
+        VARIABLES_TO_QC = config.VARS_TO_QC
+        met_predictions = DecisionTree.predict_proba(new_model, features)[:, 2]
+        predictions = met_predictions .> decision_threshold
+
+        ##QC each variable in VARIALBES_TO_QC
+        for var in VARIABLES_TO_QC
+
+            ##Create new field to reshape QCed field to 
+            NEW_FIELD = missings(Float64, config.dims) 
+
+            ##Only modify relevant data based on indexer, everything else should be fill value 
+            QCED_FIELDS = input_cfrad[var][:][indexer]
+
+            NEW_FIELD_ATTRS = Dict(
+                "units" => input_cfrad[var].attrib["units"],
+                "long_name" => "Random Forest Model QC'ed $(var) field"
+            )
+
+            ##Set MISSINGS to fill value in current field
+            
+            initial_count = count(.!map(ismissing, QCED_FIELDS))
+            ##Apply predictions from model 
+            ##If model predicts 1, this indicates a prediction of meteorological data 
+            QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : missing, enumerate(QCED_FIELDS))
+            final_count = count(.!map(ismissing, QCED_FIELDS))
+            
+            ###Need to reconstruct original 
+            NEW_FIELD = NEW_FIELD[:]
+            NEW_FIELD[indexer] = QCED_FIELDS
+            NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
+
+
+            try 
+                defVar(input_cfrad, var * QC_suffix, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
+            catch e
+                ###Simply overwrite the variable 
+                if e.msg == "NetCDF: String match to name in use"
+                    if verbose
+                        println("Already exists... overwriting") 
+                    end 
+                    input_cfrad[var*QC_suffix][:,:] = NEW_FIELD 
+                else 
+                    throw(e)
+                end 
+            end 
+            if verbose
+                println("\r\nPROCESSING: $(path)")
+                println("\r\nCompleted in $(time()-starttime ) seconds")
+                println()
+                printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
+                println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
+            end 
+
+        end 
+                
+    end 
 
     """
     Function to split a given directory or set of directories into training and testing files using the configuration
@@ -1067,7 +1130,7 @@ module Ronin
             push!(prob_level, prob) 
 
             push!(prec, tpc / (tpc + fpc) )
-            push!(rec, tpc / (tpc + fnc))
+            push!(rec,  tpc / (tpc + fnc) )
 
             ###Removal is the fraction of true negatives of total negatives 
             push!(removal, tnc / (tnc + fpc))
@@ -1452,13 +1515,127 @@ module Ronin
 
             ##Apply QC 
             QC_scan(config.input_path, config.input_config, model_path;
-                    VARIABLES_TO_QC = config.VARS_TO_QC, QC_suffix = config.QC_SUFFIX,
-                    indexer_var = config.remove_var, decision_threshold = Float64(config.met_probs[i]))
+                    VARIABLES_TO_QC = config.remove_var, QC_suffix = config.QC_SUFFIX,
+                    indexer_var = config.remove_var, decision_threshold = config.met_probs[i])
         
         end 
         printstyled("\n COMPLETED TRAINING MODEL IN $(round(time() - full_start_time, digits = 3)) seconds...\n", color=:green)
 
     end 
+
+
+    ###End user will have to be careful here, because changing the probabilities upstream will propagate 
+    ###into the calculated features 
+    function predict_multi_model(config::ModelConfig)
+
+        for (i, model_path) in enumerate(config.model_output_paths)
+            
+            out = config.feature_output_paths[i]  
+
+            if i > 1
+                QC_mask = true 
+            else 
+                QC_mask = false 
+            end 
+
+            QC_mask ? mask_name = config.mask_name : mask_name = ""
+
+            ##Get features, then calculate predictions on this set of features with existing model 
+            calculate_features(config.input_path, config.input_config, out, true; 
+                                verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
+                                REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
+                                remove_variable = config.remove_var, replace_missing = config.replace_missing,
+                                write_out = config.write_out, QC_mask = QC_mask, mask_name = mask_name)
+            
+            QC_scan(config.input_path, config.input_config, model_path; VARIABLES_TO_QC = [config.remove_var], 
+            QC_suffix = config.QC_suffix, indexer_var = config.remove_var, decision_threshold = config.met_probs[i])
+
+        end 
+
+        out = config.feature_output_paths[-1]
+        model_path = config.model_output_paths[-1]
+
+
+        predict_with_model(model_path, out)
+        ###On final iteration, actually predict with the model and return these predictions 
+    end 
+
+    function composite_prediction(config::ModelConfig)
+
+        @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
+
+        ###Let's get the files 
+        if isdir(config.input_path)
+            files = parse_directory(config.input_path)
+        else
+            files = [config.input_path]
+        end 
+
+        predictions = Matrix{Int64}(undef, 0, 1)
+        values = Matrix{Int64}(undef, 0, 1) 
+
+        init_idxers = Vector{Vector{Float64}}(undef, 0)
+
+        for file in files
+
+            init_idxer = Matrix{Bool}(undef, 0, 1)
+            final_idxer = Matrix{Bool}(undef, 0, 1)
+
+            for (i, model_path) in enumerate(config.model_output_paths)
+                
+                if i > 1
+                    QC_mask = true 
+                else 
+                    QC_mask = false 
+                end 
+    
+                QC_mask ? mask_name = config.mask_name : mask_name = ""
+                
+                ###We don't need to write these out, just use them briefly 
+                Dataset(file) do f
+
+                    X, Y, indexer = process_single_file(f, config.input_config, "", config.HAS_MANUAL_QC;
+                        verbose=config.verbose, REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP
+                        QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var
+                        QC_mask = QC_mask, mask_name = mask_name, write_out = false)
+
+                    if i == 1
+                        init_idxer = indexer 
+                    end 
+                    final_idxer = indexer 
+
+                    QC_scan(X, indexer, config) 
+                end 
+
+
+            end 
+        
+            push!(init_indexrs, init_idxer)
+            
+            curr_predictions = 
+            ###init_indexer contains the gates in the scan that did not meet the basic quality control thresholds. 
+            ###final_idxer - init_indexer contains gates that were marked as non-meteorological throughout the course 
+            ###of applying the composite model. The final prediction then is ONLY on the gates that are still valid 
+            ###in final_idxer 
+
+            ###We are interested in returning the predictions and the validation for a set of gates  
+
+        end 
+
+        
+    end 
+
+
+    # function evaluate_composite_model(config::ModelConfig)
+
+
+    #     for (i, model_path) in enumerate(config.model_output_paths)
+    #          out = config.feature
+    #     end 
+
+
+
+    # end 
         
 end 
 
