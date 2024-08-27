@@ -785,10 +785,11 @@ module Ronin
     end 
 
 
-    function QC_scan(features::Matrix{Float64}, INDEXER::Matrix{Bool}, config::ModelConfig)
+    function QC_scan(features::Matrix{Float64}, INDEXER::Matrix{Bool}, config::ModelConfig, iter::Int64)
         
         
         new_model = load_object(model_path)
+        decision_threshold = config.met_probs[iter] 
 
         VARIABLES_TO_QC = config.VARS_TO_QC
         met_predictions = DecisionTree.predict_proba(new_model, features)[:, 2]
@@ -1581,6 +1582,9 @@ module Ronin
             init_idxer = Matrix{Bool}(undef, 0, 1)
             final_idxer = Matrix{Bool}(undef, 0, 1)
 
+            curr_Y = Matrix{Bool}(undef, 0, 1) 
+            final_predictions = Vector{Bool}(undef, 0, 1)
+
             for (i, model_path) in enumerate(config.model_output_paths)
                 
                 if i > 1
@@ -1595,33 +1599,55 @@ module Ronin
                 Dataset(file) do f
 
                     X, Y, indexer = process_single_file(f, config.input_config, "", config.HAS_MANUAL_QC;
-                        verbose=config.verbose, REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP
-                        QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var
+                        verbose=config.verbose, REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
+                        QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
                         QC_mask = QC_mask, mask_name = mask_name, write_out = false)
 
                     if i == 1
                         init_idxer = indexer 
+                        curr_Y = Y
                     end 
-                    final_idxer = indexer 
 
-                    QC_scan(X, indexer, config) 
+                    final_idxer = indexer 
+                    QC_scan(X, indexer, config, i) 
+
+                    if i == config.num_models
+                        curr_model = load_object(model_path)
+                        curr_proba = config.met_probs[i]
+                        met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
+                        final_predictions = met_probs .> curr_proba 
+                    end 
+
                 end 
 
 
             end 
-        
-            push!(init_indexrs, init_idxer)
+             
+            push!(init_idxers, init_idxer)    
+            ###Add verification to full array 
+            values = vcat(values, curr_Y)      
             
-            curr_predictions = 
+            ##First need to determine the differenc between the initial indexer and the full scan? 
+
             ###init_indexer contains the gates in the scan that did not meet the basic quality control thresholds. 
+            ###A space will be needed in the predictions for each positive value here. 
             ###final_idxer - init_indexer contains gates that were marked as non-meteorological throughout the course 
             ###of applying the composite model. The final prediction then is ONLY on the gates that are still valid 
             ###in final_idxer 
+            ###We are interested in returning the predictions and the validation for a set of gates 
+            curr_predictions = fill(false, (sum(init_idxer))) 
+            pred_idxer = (final_idxer[init_idxer] .== true)
 
-            ###We are interested in returning the predictions and the validation for a set of gates  
+            curr_predictions[pred_idxer] .== final_predictions 
+            ##Take the difference between the initial indexer and the final indexer. 
+            ##Gates that are DIFFERENT were removed during the first several passes, and gates that are the SAME (valid in both indexers) 
+            ##will be the gates that the final model will be run upon
+
+            push!(predictions, curr_predictions)
 
         end 
 
+        return(predictions, values, init_idxers)
         
     end 
 
