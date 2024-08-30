@@ -57,8 +57,26 @@ module Ronin
 
         VARS_TO_QC::Vector{String} = ["VV", "ZZ"]
         QC_SUFFIX::String = "_QC"
-        
 
+        ###options are "" or "balanced" 
+        class_weights::String = ""
+        
+    end 
+
+
+    function compute_balanced_class_weights(samples::Vector{<:Real})
+        classes = unique(samples)
+        n_classes = length(classes)
+        n_samples = length(samples)
+        weight_dict = Dict()
+        
+    
+        for class in classes 
+            weight_dict[class] = (n_samples/(n_classes * sum(samples .== class)))
+        end 
+    
+        return(weight_dict)
+        
     end 
 
     """
@@ -226,6 +244,7 @@ module Ronin
             write_dataset(fid, "X", X)
             write_dataset(fid, "Y", Y)
             close(fid)
+            return X, Y
         else
             close(fid)
             return X, Y
@@ -1439,7 +1458,7 @@ module Ronin
             printstyled("\nCALCULATING FEATURES FOR PASS: $(i)\n", color=:green)
             starttime = time() 
 
-            calculate_features(config.input_path, config.input_config, out, true; 
+            X,Y = calculate_features(config.input_path, config.input_config, out, true; 
                                 verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
                                 REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
                                 remove_variable = config.remove_var, replace_missing = config.replace_missing,
@@ -1448,8 +1467,25 @@ module Ronin
             
             printstyled("\nTRAINING MODEL FOR PASS: $(i)\n", color=:green)
             starttime = time() 
+
+            class_weights = Vector{Float32}([0.0,1.0])
             ##Train model based on these features 
-            train_model(out, model_path)
+            if config.class_weights != ""
+
+                if lowercase(config.class_weights) != "balanced"
+                    printstyled("ERROR: UNKNOWN CLASS WEIGHT $(config.class_weights)... \nContinuing with no weighting\n", color=:yellow)
+                else 
+
+                    class_weights = Vector{Float32}(fill(0,length(Y[:,:][:])))
+                    weight_dict = compute_balanced_class_weights(Y[:,:][:])
+                    for class in keys(weight_dict)
+                        class_weights[Y[:,:][:] .== class] .= weight_dict[class]
+                    end 
+                end 
+            end 
+
+        
+            train_model(out, model_path, class_weights = class_weights)
 
             ##Apply QC 
             QC_scan(config.input_path, config.input_config, model_path;
@@ -1656,16 +1692,16 @@ module Ronin
         
     end 
 
-    # function evaluate_composite_model(config::ModelConfig)
+    function evaluate_composite_model(config::ModelConfig)
 
 
-    #     for (i, model_path) in enumerate(config.model_output_paths)
-    #          out = config.feature
-    #     end 
+        for (i, model_path) in enumerate(config.model_output_paths)
+             out = config.feature
+        end 
 
 
 
-    # end 
+    end 
         
 end 
 

@@ -494,7 +494,6 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
                 currdat = cfrad[var][:,:]
                 currdat[feature_mask] .= missing 
                 raw = @eval $func($currdat)[:]
-                print("PAST RAW")
             else 
                 raw = @eval $func($cfrad[$var][:,:])[:]
             end 
