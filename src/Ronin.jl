@@ -13,7 +13,6 @@ module Ronin
     using BenchmarkTools
     using HDF5 
     using MLJ, MLJLinearModels, CategoricalArrays
-    using PythonCall
     using DataFrames
     using JLD2
     using DataStructures
@@ -44,6 +43,8 @@ module Ronin
         input_path::String 
         input_config::String
 
+        file_preprocessed::Vector{Bool} 
+
         verbose::Bool = true 
         REMOVE_LOW_NCP::Bool = true 
         REMOVE_HIGH_PGG::Bool = true 
@@ -54,6 +55,8 @@ module Ronin
         write_out::Bool = true 
         QC_mask::Bool = false 
         mask_name::String ="" 
+
+        
 
         VARS_TO_QC::Vector{String} = ["VV", "ZZ"]
         QC_SUFFIX::String = "_QC"
@@ -1455,16 +1458,25 @@ module Ronin
 
             QC_mask ? mask_name = config.mask_name : mask_name = ""
 
-            printstyled("\nCALCULATING FEATURES FOR PASS: $(i)\n", color=:green)
             starttime = time() 
+            if config.file_preprocessed[i]
 
-            X,Y = calculate_features(config.input_path, config.input_config, out, true; 
-                                verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
-                                REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
-                                remove_variable = config.remove_var, replace_missing = config.replace_missing,
-                                write_out = config.write_out, QC_mask = QC_mask, mask_name = mask_name)
-            printstyled("FINISHED CALCULATING FEATURES FOR PASS $(i) in $(round(time() - starttime, digits = 3)) seconds...\n", color=:green)
-            
+                print("Reading input features from file $(out)...\n")
+                h5open(out) do f
+                    X = f["X"][:,:]
+                    Y = f["Y"][:,:]
+                end 
+
+            else
+                printstyled("\nCALCULATING FEATURES FOR PASS: $(i)\n", color=:green)
+                X,Y = calculate_features(config.input_path, config.input_config, out, true; 
+                                    verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
+                                    REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
+                                    remove_variable = config.remove_var, replace_missing = config.replace_missing,
+                                    write_out = config.write_out, QC_mask = QC_mask, mask_name = mask_name)
+                printstyled("FINISHED CALCULATING FEATURES FOR PASS $(i) in $(round(time() - starttime, digits = 3)) seconds...\n", color=:green)
+            end 
+
             printstyled("\nTRAINING MODEL FOR PASS: $(i)\n", color=:green)
             starttime = time() 
 
