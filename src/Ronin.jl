@@ -24,7 +24,7 @@ module Ronin
     export calculate_features
     export split_training_testing! 
     export train_model 
-    export QC_scan, get_QC_mask 
+    export QC_scan, get_QC_mask, QC_multi_model
     export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
     export process_single_file_original
     export train_multi_model, predict_multi_model, ModelConfig, composite_prediction
@@ -215,10 +215,10 @@ module Ronin
     Path to output calculated features to (generally ends in .h5)
 
     ```julia
-    HAS_MANUAL_QC::Bool
+    HAS_INTERACTIVE_QC::Bool
     ```
-    Specifies whether or not the file(s) have already undergone a manual QC procedure. 
-    If true, function will also output a `Y` array used to verify where manual QC removed gates. This array is
+    Specifies whether or not the file(s) have already undergone a interactive QC procedure. 
+    If true, function will also output a `Y` array used to verify where interactive QC removed gates. This array is
     formed by considering where gates with non-missing data in raw scans (specified by `remove_variable`) are
     set to missing after QC is performed. 
 
@@ -263,7 +263,7 @@ module Ronin
     ```
     Whether or not to write features out to file 
     """
-    function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_MANUAL_QC::Bool; 
+    function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_INTERACTIVE_QC::Bool; 
         verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false, QC_variable::String = "VG", remove_variable::String = "VV", 
         replace_missing::Bool = false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String = "")
 
@@ -306,13 +306,13 @@ module Ronin
                 if QC_mask
                     currmask = Matrix{Bool}(.! map(ismissing, cfrad[mask_name][:,:]))
                     (newX, newY, newIdx) = process_single_file(cfrad, argument_file; 
-                                                HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                                 REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing, feature_mask = currmask, mask_features = true)
                     
                 else 
                     (newX, newY, newIdx) = process_single_file(cfrad, argument_file; 
-                                                HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                                 REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing)
                 end 
@@ -344,8 +344,8 @@ module Ronin
         println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 2)) SECONDS")
     
         ###Get verification information 
-        ###0 indicates NON METEOROLOGICAL data that was removed during manual QC
-        ###1 indicates METEOROLOGICAL data that was retained during manual QC 
+        ###0 indicates NON METEOROLOGICAL data that was removed during interactive QC
+        ###1 indicates METEOROLOGICAL data that was retained during interactive QC 
         
         ##Probably only want to write once, I/O is very slow 
         if write_out
@@ -397,10 +397,10 @@ module Ronin
     Location to output the calculated feature data to. 
 
     ```julia
-    HAS_MANUAL_QC::Bool
+    HAS_INTERACTIVE_QC::Bool
     ```
-    Specifies whether or not the file(s) have already undergone a manual QC procedure. 
-    If true, function will also output a `Y` array used to verify where manual QC removed gates. This array is
+    Specifies whether or not the file(s) have already undergone a interactive QC procedure. 
+    If true, function will also output a `Y` array used to verify where interactive QC removed gates. This array is
     formed by considering where gates with non-missing data in raw scans (specified by `remove_variable`) are
     set to missing after QC is performed. 
 
@@ -446,7 +446,7 @@ module Ronin
     Whether or not to write out to file. 
     """
     function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
-        ,output_file::String, HAS_MANUAL_QC::Bool; verbose::Bool=false,
+        ,output_file::String, HAS_INTERACTIVE_QC::Bool; verbose::Bool=false,
          REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable::String = "VG", remove_variable::String = "VV", 
          replace_missing::Bool=false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String="")
 
@@ -489,13 +489,13 @@ module Ronin
 
                     currmask = Matrix{Bool}(.! map(ismissing, cfrad[mask_name][:,:]))
                     (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
-                                                HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                                 REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing, feature_mask = currmask, mask_features = true)
                     
                 else 
                     (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
-                                                HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                                 REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing)
                 end 
@@ -527,8 +527,8 @@ module Ronin
         println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 2)) SECONDS")
     
         ###Get verification information 
-        ###0 indicates NON METEOROLOGICAL data that was removed during manual QC
-        ###1 indicates METEOROLOGICAL data that was retained during manual QC 
+        ###0 indicates NON METEOROLOGICAL data that was removed during interactive QC
+        ###1 indicates METEOROLOGICAL data that was retained during interactive QC 
         
         ##Probably only want to write once, I/O is very slow 
         if write_out
@@ -1135,18 +1135,18 @@ module Ronin
     
     """
     function evaluate_model(model_path::String, input_file_dir::String, config_file_path::String; mode="C",
-        HAS_MANUAL_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
+        HAS_INTERACTIVE_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
         QC_variable="VG", remove_variable = "VV", replace_missing = false, output_file = "_.h5", write_out=false, col_subset=:, proba_seq::StepRangeLen = .1:.1:.9)
 
         model = load_object(model_path) 
 
         if mode == "C"
 
-            if (!HAS_MANUAL_QC)
-                Exception("ERROR: PLEASE SET HAS_MANUAL_QC TO TRUE, AND SPECIFY QC_VARIABLE")
+            if (!HAS_INTERACTIVE_QC)
+                Exception("ERROR: PLEASE SET HAS_INTERACTIVE_QC TO TRUE, AND SPECIFY QC_VARIABLE")
             end 
 
-            X, Y = calculate_features(input_file_dir, config_file_path, output_file, HAS_MANUAL_QC 
+            X, Y = calculate_features(input_file_dir, config_file_path, output_file, HAS_INTERACTIVE_QC 
                             ; verbose=verbose, REMOVE_LOW_NCP=REMOVE_LOW_NCP, REMOVE_HIGH_PGG=REMOVE_HIGH_PGG, 
                             QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
                             write_out=write_out)
@@ -1431,7 +1431,7 @@ module Ronin
             try
             
                 Xn, Yn, indexern = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, QC_variable = QC_variable,
-                                                            REMOVE_LOW_NCP = true, remove_variable=indexer_var, HAS_MANUAL_QC = true)
+                                                            REMOVE_LOW_NCP = true, remove_variable=indexer_var, HAS_INTERACTIVE_QC = true)
                 println("\r\nCompleted in $(time()-starttime ) seconds")
 
                     ##Load saved RF model 
@@ -1543,9 +1543,18 @@ module Ronin
 
 
 
-    
+    """
+    All-in-one function to take in a set of radar data, calculate input features, and train a chain of random forest models 
+    for meteorological/non-meteorological gate identification. 
+
+    #Required arguments 
+    ```julia
+    config::ModelConfig
+    ```
+    Struct containing configuration info for model training 
+    """
     function train_multi_model(config::ModelConfig)
-        
+        ##Quick input sanitation check 
         @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
 
         full_start_time = time() 
@@ -1621,6 +1630,7 @@ module Ronin
     ###End user will have to be careful here, because changing the probabilities upstream will propagate 
     ###into the calculated features 
     function predict_multi_model(config::ModelConfig)
+
 
         for (i, model_path) in enumerate(config.model_output_paths)
             
@@ -1718,6 +1728,59 @@ module Ronin
                 
     end 
 
+
+    function QC_multi_model(config::ModelConfig)
+
+        @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
+
+        ###Let's get the files 
+        if isdir(config.input_path)
+            files = parse_directory(config.input_path)
+        else
+            files = [config.input_path]
+        end 
+
+        for file in files
+
+            for (i, model_path) in enumerate(config.model_output_paths)
+
+                ###We don't need to write these out, just use them briefly 
+                NCDataset(file, "a") do f
+
+                    if i > 1
+                        QC_mask = true
+                        feature_mask = Matrix{Bool}( .! map(ismissing, f[config.mask_name][:,:]))
+                    else 
+                        QC_mask = config.QC_mask 
+                        feature_mask = QC_mask ? config.mask_name : [true true; false false]
+                    end 
+                    ###Need to actually pass the QC mask 
+                    X, Y, indexer = process_single_file(f, config.input_config, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
+                        , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
+                        QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
+                        mask_features = QC_mask, feature_mask = feature_mask)
+
+                    QC_scan(f, X, Vector{Bool}(indexer), config, i) 
+    
+                end 
+            end 
+        end 
+
+    end 
+
+    """
+    ```composite_prediction(config::ModelConfig)```
+
+    Passes feature data through a model or series of models and returns model classifications. Applies configuration such as 
+    masking and basic QC (high PGG/low NCP) specified by `config`
+
+    ### Returns 
+    
+    * `predictions::Vector{Bool}` Model classifications for gates that passed basic quality control thresholds 
+    * `values::BitVector` Verification gates correspondant to predictions 
+    * `init_idxers::Vector{Vector{Float64}}` Information about where original radar data did/did not meet basic quality control thresholds. 
+                                            Each vector contains a flattened vector describing whether or not a given gate was predicted on. 
+    """
     function composite_prediction(config::ModelConfig)
 
         @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
@@ -1756,7 +1819,7 @@ module Ronin
                         feature_mask = [true true; false false]
                     end 
                     ###Need to actually pass the QC mask 
-                    X, Y, indexer = process_single_file(f, config.input_config, HAS_MANUAL_QC = config.HAS_INTERACTIVE_QC
+                    X, Y, indexer = process_single_file(f, config.input_config, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
                         , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
                         QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
                         mask_features = QC_mask, feature_mask = feature_mask)
@@ -1819,10 +1882,9 @@ module Ronin
              out = config.feature
         end 
 
-
-
     end 
         
+    
 end 
 
     
