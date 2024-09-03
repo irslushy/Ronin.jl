@@ -31,7 +31,115 @@ module Ronin
 
 
 
+    """
+    ## Stuct used to store configuration information for a given model
 
+    # Required arguments 
+    ```julia
+    num_models:::Int64
+    ```
+    Number of ML models in the model chain. Can be one or more. 
+
+    ```julia
+    model_output_paths::Vector{String}
+    ```
+    Vector containing paths to each model in the model chain. Should be same length as the number of models 
+
+    ```julia
+    met_probs::Vector{Float64}
+    ```
+    Vector containing the decision threshold for a gate to be considered meteorological in each model in the chain. Example, if set to .9, 
+        >= 90% of trees in the random forest must assign a gate a label of meteorological for it to be considered meteorological. 
+
+    ```julia
+    feature_output_paths::Vector{String}
+    ```
+    Vector containing paths representing the locations to output calculated features to for each model in the chain. 
+
+    ```julia
+    input_path::String
+    ```
+    Directory containing input radar data 
+
+    ```julia
+    input_config::String 
+    ```
+    Path to file containing feature variables to calculate 
+
+    ```julia
+    file_preprocessed::Vector{Bool}
+    ```
+    For each model in the chain, contains a boolean value signifying if the correspondant feature output path has already been processed. If true, 
+    will open the file at this path instead of re-calculating input features. 
+
+    # Optional arguments 
+        
+    ```julia
+    verbose::Bool = true 
+    ```
+    Whether to print out timing information, etc. 
+
+    ```julia
+    REMOVE_LOW_NCP::Bool = true
+    ```
+    Whether to automatically remove gates that do not meet a basic NCP threshold 
+
+    ```julia
+    REMOVE_HIGH_PGG::Bool = true
+    ```
+    Whether to automatically remove gates that do not meet a basic PGG threshold 
+
+    ```julia
+    HAS_INTERACTIVE_QC::Bool = false 
+    ```
+    Whether the radar data has already had interactive QC applied to it 
+
+    ```julia
+    QC_var::String = "VG"
+    ```
+    If radar data has interactive QC already applied, the name of a variable that the QC has been applied to 
+
+    ```julia
+    remove_var::String = "VV" 
+    ```
+    Name of a raw variable in the radar data that can be used to determine the location of missing gates 
+
+    ```julia
+    replace_missing::Bool = false 
+    ```
+    For spatial feature (AVG, STD, etc.) calculation, whether or not to replace MISSING gates in the mask area with FILL_VAL 
+    
+    ```julia
+    write_out::Bool = true 
+    ```
+    Whether or not to write the calculated input features to disk, paths specified in feature_output_paths
+    
+    ```julia
+    QC_mask::Bool = false 
+    ```
+    For the first model in the chain, whether or not to mask gates considered for feature calculation using a mask specified by `mask_name`
+    More details elsewhere in the documentation. 
+
+    ```julia
+    mask_name::String = ""
+    ```
+    See above 
+
+    ```julia
+    VARS_TO_QC::Vector{String} = ["VV", "ZZ"]
+    ```
+    List of variables to apply QC to to get mask for next model in chain 
+
+    ```julia
+    QC_SUFFIX::String
+    ```
+    Postfix to apply to variable name once QC has been applied. 
+
+    ```julia
+    class_weights::String = ""
+    ```
+    Class weighting scheme to apply in the training of RF model. Currently only "balanced" is implemented. 
+    """
     Base.@kwdef struct ModelConfig
 
         num_models::Int64
@@ -1435,7 +1543,7 @@ module Ronin
 
 
 
- 
+    
     function train_multi_model(config::ModelConfig)
         
         @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
