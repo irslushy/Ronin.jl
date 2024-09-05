@@ -24,7 +24,7 @@ module Ronin
     export calculate_features
     export split_training_testing! 
     export train_model 
-    export QC_scan, get_QC_mask, QC_multi_model
+    export QC_scan, get_QC_mask
     export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
     export process_single_file_original
     export train_multi_model, predict_multi_model, ModelConfig, composite_prediction
@@ -1665,11 +1665,12 @@ module Ronin
     end 
 
     
-    function QC_scan(input_cfrad::NCDataset, features::Matrix{Float64}, indexer::Vector{Bool}, config::ModelConfig, iter::Int64)
+    function QC_scan(input_cfrad::String, features::Matrix{Float64}, indexer::Vector{Bool}, config::ModelConfig, iter::Int64)
         
+        input_set = NCDataset(input_cfrad, "a") 
         new_model = load_object(config.model_output_paths[iter])
         decision_threshold = config.met_probs[iter] 
-        cfrad_dims = (input_cfrad.dim["range"], input_cfrad.dim["time"])
+        cfrad_dims = (input_set.dim["range"], input_set.dim["time"])
         
         VARIABLES_TO_QC = config.VARS_TO_QC
         met_predictions = DecisionTree.predict_proba(new_model, features)[:, 2]
@@ -1682,10 +1683,10 @@ module Ronin
             ##Create new field to reshape QCed field to 
             NEW_FIELD = missings(Float64, cfrad_dims) 
             ##Only modify relevant data based on indexer, everything else should be fill value 
-            QCED_FIELDS = input_cfrad[var][:][indexer]
+            QCED_FIELDS = input_set[var][:][indexer]
 
             NEW_FIELD_ATTRS = Dict(
-                "units" => input_cfrad[var].attrib["units"],
+                "units" => input_set[var].attrib["units"],
                 "long_name" => "Random Forest Model QC'ed $(var) field"
             )
 
@@ -1705,14 +1706,14 @@ module Ronin
 
 
             try 
-                defVar(input_cfrad, var * config.QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
+                defVar(input_set, var * config.QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
             catch e
                 ###Simply overwrite the variable 
                 if e.msg == "NetCDF: String match to name in use"
                     if config.verbose
                         println("Already exists... overwriting") 
                     end 
-                    input_cfrad[var*config.QC_SUFFIX][:,:] = NEW_FIELD 
+                    input_set[var*config.QC_SUFFIX][:,:] = NEW_FIELD 
                 else 
                     throw(e)
                 end 
@@ -1725,61 +1726,158 @@ module Ronin
             end 
 
         end 
+
+        close(input_set) 
                 
     end 
 
+    function QC_scan(input_cfrad::String, new_model, config::ModelConfig, iter::Int64, QC_mask::Bool, feature_mask::Matrix{Bool})
+    
+        input_set = NCDataset(input_cfrad, "a") 
+        
+        starttime=time() 
 
-    function QC_multi_model(config::ModelConfig)
+        features, Y, indexer = process_single_file(input_set, config.input_config, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
+        , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
+        QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
+        mask_features = QC_mask, feature_mask = feature_mask) 
+    
+    
+        decision_threshold = config.met_probs[iter] 
+        cfrad_dims = (input_set.dim["range"], input_set.dim["time"])
+        
+        VARIABLES_TO_QC = config.VARS_TO_QC
+        met_predictions = DecisionTree.predict_proba(new_model, features)[:, 2]
+        predictions = met_predictions .> decision_threshold
+        
+        ##QC each variable in VARIALBES_TO_QC
+        for var in VARIABLES_TO_QC
+    
+            ##Create new field to reshape QCed field to 
+            NEW_FIELD = missings(Float64, cfrad_dims) 
+            ##Only modify relevant data based on indexer, everything else should be fill value 
+            QCED_FIELDS = input_set[var][:][indexer]
+    
+            NEW_FIELD_ATTRS = Dict(
+                "units" => input_set[var].attrib["units"],
+                "long_name" => "Random Forest Model QC'ed $(var) field"
+            )
+    
+            ##Set MISSINGS to fill value in current field
+            
+            initial_count = count(.!map(ismissing, QCED_FIELDS))
+            ##Apply predictions from model 
+            ##If model predicts 1, this indicates a prediction of meteorological data 
+            QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : missing, enumerate(QCED_FIELDS))
+            final_count = count(.!map(ismissing, QCED_FIELDS))
+            
+            
+            ###Need to reconstruct original 
+            NEW_FIELD = NEW_FIELD[:]
+            NEW_FIELD[indexer] = QCED_FIELDS
+            NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
+    
+    
+            try 
+                defVar(input_set, var * config.QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
+            catch e
+                print("INPUT_SET $(typeof(input_set)), VAR: $(typeof(var))")
+                ###Simply overwrite the variable 
+                if e.msg == "NetCDF: String match to name in use"
+                    if config.verbose
+                        println("Already exists... overwriting") 
+                    end 
+                    input_set[var*config.QC_SUFFIX][:,:] = NEW_FIELD 
+                else 
+                    throw(e)
+                end 
+            end 
+    
+            if config.verbose
+                println("\r\nCompleted in $(time()-starttime ) seconds")
+                println()
+                printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
+                println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
+            end 
+    
+        end 
+    
+        close(input_set) 
+                
+    end     
+
+    function QC_scan(config::ModelConfig)
 
         @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
-
+    
         ###Let's get the files 
         if isdir(config.input_path)
             files = parse_directory(config.input_path)
         else
             files = [config.input_path]
         end 
-
+    
+    
+        ###Load models into memory 
+    
+        printstyled("LOADING MODELS....\n", color=:green)
+    
+        models = [] 
+    
+        for model_path in config.model_output_paths 
+            push!(models, load_object(model_path))
+        end 
+    
         for file in files
-
+    
+            print("QC-ing $(file)")
+            starttime = time() 
+            X = ""
+            Y= ""
+            indexer = ""
+            
             for (i, model_path) in enumerate(config.model_output_paths)
-
+    
                 ###We don't need to write these out, just use them briefly 
                 NCDataset(file, "a") do f
-
+                 
+    
                     if i > 1
                         QC_mask = true
-                        feature_mask = Matrix{Bool}( .! map(ismissing, f[config.mask_name][:,:]))
+                        data = f[config.mask_name][:,:]
+                        feature_mask = Matrix{Bool}( .! map(ismissing,data))
                     else 
                         QC_mask = config.QC_mask 
                         feature_mask = QC_mask ? config.mask_name : [true true; false false]
                     end 
                     ###Need to actually pass the QC mask 
-                    X, Y, indexer = process_single_file(f, config.input_config, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
-                        , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
-                        QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
-                        mask_features = QC_mask, feature_mask = feature_mask)
+                    
+                    QC_scan(file, models[i], config, i, QC_mask, feature_mask)
 
-                    QC_scan(f, X, Vector{Bool}(indexer), config, i) 
     
                 end 
+    
             end 
+    
+            print("FINISHED QC-ing$(file) in $(round(time()-starttime, digits=2))")
         end 
-
+    
     end 
 
+
+
     """
-    ```composite_prediction(config::ModelConfig)```
+        ```composite_prediction(config::ModelConfig)```
 
-    Passes feature data through a model or series of models and returns model classifications. Applies configuration such as 
-    masking and basic QC (high PGG/low NCP) specified by `config`
+        Passes feature data through a model or series of models and returns model classifications. Applies configuration such as 
+        masking and basic QC (high PGG/low NCP) specified by `config`
 
-    ### Returns 
-    
-    * `predictions::Vector{Bool}` Model classifications for gates that passed basic quality control thresholds 
-    * `values::BitVector` Verification gates correspondant to predictions 
-    * `init_idxers::Vector{Vector{Float64}}` Information about where original radar data did/did not meet basic quality control thresholds. 
-                                            Each vector contains a flattened vector describing whether or not a given gate was predicted on. 
+        ### Returns 
+        
+        * `predictions::Vector{Bool}` Model classifications for gates that passed basic quality control thresholds 
+        * `values::BitVector` Verification gates correspondant to predictions 
+        * `init_idxers::Vector{Vector{Float64}}` Information about where original radar data did/did not meet basic quality control thresholds. 
+                                                Each vector contains a flattened vector describing whether or not a given gate was predicted on. 
     """
     function composite_prediction(config::ModelConfig)
 
@@ -1875,16 +1973,15 @@ module Ronin
         
     end 
 
-    function evaluate_composite_model(config::ModelConfig)
-
-
-        for (i, model_path) in enumerate(config.model_output_paths)
-             out = config.feature
-        end 
-
-    end 
-        
-    
 end 
 
-    
+    # function evaluate_composite_model(config::ModelConfig)
+
+
+    #     for (i, model_path) in enumerate(config.model_output_paths)
+    #          out = config.feature
+    #     end 
+
+    # end 
+
+
