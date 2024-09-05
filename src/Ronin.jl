@@ -1731,10 +1731,8 @@ module Ronin
                 
     end 
 
-    function QC_scan(input_cfrad::String, new_model, config::ModelConfig, iter::Int64, QC_mask::Bool, feature_mask::Matrix{Bool})
-    
-        input_set = NCDataset(input_cfrad, "a") 
-        
+    function QC_scan(input_set::NCDataset, new_model, config::ModelConfig, iter::Int64, QC_mask::Bool, feature_mask::Matrix{Bool})
+            
         starttime=time() 
 
         features, Y, indexer = process_single_file(input_set, config.input_config, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
@@ -1852,9 +1850,8 @@ module Ronin
                     end 
                     ###Need to actually pass the QC mask 
                     
-                    QC_scan(file, models[i], config, i, QC_mask, feature_mask)
+                    QC_scan(f, models[i], config, i, QC_mask, feature_mask)
 
-    
                 end 
     
             end 
@@ -1895,6 +1892,13 @@ module Ronin
 
         init_idxers = Vector{Vector{Float64}}(undef, 0)
 
+        printstyled("LOADING MODELS....\n", color=:green)
+        models = [] 
+
+        for path in config.model_output_paths
+            push!(models, load_object(path))
+        end 
+
         for file in files
 
             init_idxer = Matrix{Bool}(undef, 0, 1)
@@ -1929,16 +1933,15 @@ module Ronin
 
                     final_idxer = indexer 
 
-                    QC_scan(f, X, Vector{Bool}(indexer), config, i) 
+                    QC_scan(f, models[i], config, i, QC_mask, feature_mask) 
 
                     if i == config.num_models
-                        curr_model = load_object(model_path)
+                        curr_model = models[i]
                         curr_proba = config.met_probs[i]
                         met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
                         final_predictions = met_probs .> curr_proba 
                     end 
 
-                    close(f)
                 end 
 
 
