@@ -1876,7 +1876,7 @@ module Ronin
         * `init_idxers::Vector{Vector{Float64}}` Information about where original radar data did/did not meet basic quality control thresholds. 
                                                 Each vector contains a flattened vector describing whether or not a given gate was predicted on. 
     """
-    function composite_prediction(config::ModelConfig)
+    function composite_prediction(config::ModelConfig; write_features_out::Bool = false, feature_outfile::String="placeholder.h5")
 
         @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
 
@@ -1893,6 +1893,7 @@ module Ronin
         init_idxers = Vector{Vector{Float64}}(undef, 0)
 
         printstyled("LOADING MODELS....\n", color=:green)
+        flush(stdout)
         models = [] 
 
         for path in config.model_output_paths
@@ -1970,6 +1971,15 @@ module Ronin
             ##will be the gates that the final model will be run upon
             predictions = vcat(predictions, curr_predictions)
 
+        end 
+        
+        if write_features_out
+            h5open(feature_outfile, "w") do f 
+                write_dataset(f, "Predictions", predictions)
+                write_dataset(f, "Verification", values)
+                ##Below line is giving me Type Array does not have a definite size errors 
+                #write_dataset(f, "Scan_indexers", init_idxers)
+            end
         end 
 
         return(predictions, values, init_idxers)
