@@ -57,9 +57,9 @@ If you wish to remove a validation set from the training dataset, utilize `remov
 <br><br>
 
 
-Finally, we can train a model to process our data. To do so, utilize `train_model`. If training data is contained within `training_set.h5`, and you wish to name your trained model `trained_model.joblib`, invoke as follows. It's recommended to end the model name in `.joblib` as this is the method used to serialzied it to disk. 
+Finally, we can train a model to process our data. To do so, utilize `train_model`. If training data is contained within `training_set.h5`, and you wish to name your trained model `trained_model.jld2`, invoke as follows. It's recommended to end the model name in `.jld2` as this is the method used to serialzied it to disk. 
 ```
-train_model("training_set.h5", "trained_model.joblib")
+train_model("training_set.h5", "trained_model.jld2")
 ```
 <b>NOTE: This may take on the order of 20-30 minutes if running on the entire ELDORA set.</b><br><br>
 This script also includes the option to verify the model on the training set and output the results to a separate h5 file. If you wish to do this, execute the same as above, but include the keyword argument `verify=true`<br><br>
