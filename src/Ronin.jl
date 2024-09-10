@@ -26,8 +26,7 @@ module Ronin
     export train_model 
     export QC_scan, get_QC_mask
     export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
-    export process_single_file_original
-    export train_multi_model, predict_multi_model, ModelConfig, composite_prediction
+    export train_multi_model, ModelConfig, composite_prediction
 
 
 
@@ -1478,7 +1477,8 @@ module Ronin
         return (X, Y, indexer, predictions, false_positives_idx, false_negatives_idx) 
     end 
 
-
+    
+    ###UNTESTED! 
     function get_QC_mask(file_path::String, config_file_path::String, 
         model_path::String; indexer_var::String="VV", decision_threshold::Float64 = .5, write_to_file::Bool=true, mask_name::String="QC_MASK")
 
@@ -1616,10 +1616,12 @@ module Ronin
         
             train_model(out, model_path, class_weights = class_weights)
 
-            ##Apply QC 
+            ##Apply QC so that it will propagate to next pass of model 
+            ##The variable being QC'ed here will be the raw variable as specified by the user 
             QC_scan(config.input_path, config.input_config, model_path;
                     VARIABLES_TO_QC = [config.remove_var], QC_suffix = config.QC_SUFFIX,
-                    indexer_var = config.remove_var, decision_threshold = config.met_probs[i])
+                    indexer_var = config.remove_var, decision_threshold = config.met_probs[i], 
+                    REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP=config.REMOVE_LOW_NCP)
         
         end 
         printstyled("\n COMPLETED TRAINING MODEL IN $(round(time() - full_start_time, digits = 3)) seconds...\n", color=:green)
@@ -1629,6 +1631,10 @@ module Ronin
 
     ###End user will have to be careful here, because changing the probabilities upstream will propagate 
     ###into the calculated features 
+    """
+
+
+    """
     function predict_multi_model(config::ModelConfig)
 
 

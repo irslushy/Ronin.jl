@@ -25,6 +25,14 @@ evaluate_model(::String, ::String, ::String)
 error_characteristics(::String, ::String, ::String) 
 ```
 
+## Predicting using a composite model 
+
+```@docs 
+ModelConfig
+train_multi_model
+composite_prediction 
+```
+
 ## Non-user facing
 
 ```@docs

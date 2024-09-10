@@ -87,7 +87,7 @@ for cfrad_name in readdir(TRAINING_PATH)
         continue
     end 
     Dataset(TRAINING_PATH * cfrad_name) do f
-        X_new, Y_new, indexer = Ronin.process_single_file(f, config_file_path; HAS_MANUAL_QC=true, REMOVE_LOW_NCP=true, REMOVE_HIGH_PGG=true, QC_variable = "VG", 
+        X_new, Y_new, indexer = Ronin.process_single_file(f, config_file_path; HAS_INTERACTIVE_QC=true, REMOVE_LOW_NCP=true, REMOVE_HIGH_PGG=true, QC_variable = "VG", 
                                                     remove_variable = "VV", replace_missing = false) 
         global X
         global Y
@@ -137,9 +137,6 @@ for (i, cfrad_name) in enumerate(readdir(TRAINING_PATH))
 
         @assert pos_retained_frac > min_retain_threshold
         @assert neg_removed_frac > min_bad_threshold
-
-        
-        
     end 
 end 
 
