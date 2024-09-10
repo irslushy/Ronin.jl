@@ -13,7 +13,6 @@ module Ronin
     using BenchmarkTools
     using HDF5 
     using MLJ, MLJLinearModels, CategoricalArrays
-    using PythonCall
     using DataFrames
     using JLD2
     using DataStructures
@@ -25,9 +24,170 @@ module Ronin
     export calculate_features
     export split_training_testing! 
     export train_model 
-    export QC_scan, get_QC_mask 
+    export QC_scan, get_QC_mask
     export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
-    export process_single_file_original
+    export train_multi_model, ModelConfig, composite_prediction
+
+
+
+    """
+    ## Stuct used to store configuration information for a given model
+
+    # Required arguments 
+    ```julia
+    num_models:::Int64
+    ```
+    Number of ML models in the model chain. Can be one or more. 
+
+    ```julia
+    model_output_paths::Vector{String}
+    ```
+    Vector containing paths to each model in the model chain. Should be same length as the number of models 
+
+    ```julia
+    met_probs::Vector{Float64}
+    ```
+    Vector containing the decision threshold for a gate to be considered meteorological in each model in the chain. Example, if set to .9, 
+        >= 90% of trees in the random forest must assign a gate a label of meteorological for it to be considered meteorological. 
+
+    ```julia
+    feature_output_paths::Vector{String}
+    ```
+    Vector containing paths representing the locations to output calculated features to for each model in the chain. 
+
+    ```julia
+    input_path::String
+    ```
+    Directory containing input radar data 
+
+    ```julia
+    input_config::String 
+    ```
+    Path to file containing feature variables to calculate 
+
+    ```julia
+    file_preprocessed::Vector{Bool}
+    ```
+    For each model in the chain, contains a boolean value signifying if the correspondant feature output path has already been processed. If true, 
+    will open the file at this path instead of re-calculating input features. 
+
+    # Optional arguments 
+        
+    ```julia
+    verbose::Bool = true 
+    ```
+    Whether to print out timing information, etc. 
+
+    ```julia
+    REMOVE_LOW_NCP::Bool = true
+    ```
+    Whether to automatically remove gates that do not meet a basic NCP threshold 
+
+    ```julia
+    REMOVE_HIGH_PGG::Bool = true
+    ```
+    Whether to automatically remove gates that do not meet a basic PGG threshold 
+
+    ```julia
+    HAS_INTERACTIVE_QC::Bool = false 
+    ```
+    Whether the radar data has already had interactive QC applied to it 
+
+    ```julia
+    QC_var::String = "VG"
+    ```
+    If radar data has interactive QC already applied, the name of a variable that the QC has been applied to 
+
+    ```julia
+    remove_var::String = "VV" 
+    ```
+    Name of a raw variable in the radar data that can be used to determine the location of missing gates 
+
+    ```julia
+    replace_missing::Bool = false 
+    ```
+    For spatial feature (AVG, STD, etc.) calculation, whether or not to replace MISSING gates in the mask area with FILL_VAL 
+    
+    ```julia
+    write_out::Bool = true 
+    ```
+    Whether or not to write the calculated input features to disk, paths specified in feature_output_paths
+    
+    ```julia
+    QC_mask::Bool = false 
+    ```
+    For the first model in the chain, whether or not to mask gates considered for feature calculation using a mask specified by `mask_name`
+    More details elsewhere in the documentation. 
+
+    ```julia
+    mask_name::String = ""
+    ```
+    See above 
+
+    ```julia
+    VARS_TO_QC::Vector{String} = ["VV", "ZZ"]
+    ```
+    List of variables to apply QC to to get mask for next model in chain 
+
+    ```julia
+    QC_SUFFIX::String
+    ```
+    Postfix to apply to variable name once QC has been applied. 
+
+    ```julia
+    class_weights::String = ""
+    ```
+    Class weighting scheme to apply in the training of RF model. Currently only "balanced" is implemented. 
+    """
+    Base.@kwdef struct ModelConfig
+
+        num_models::Int64
+        model_output_paths::Vector{String}
+        met_probs::Vector{Float64} 
+
+        feature_output_paths::Vector{String} 
+        
+        input_path::String 
+        input_config::String
+
+        file_preprocessed::Vector{Bool} 
+
+        verbose::Bool = true 
+        REMOVE_LOW_NCP::Bool = true 
+        REMOVE_HIGH_PGG::Bool = true 
+        HAS_INTERACTIVE_QC::Bool = false 
+        QC_var::String = "VG"
+        remove_var::String = "VV" 
+        replace_missing::Bool = false 
+        write_out::Bool = true 
+        QC_mask::Bool = false 
+        mask_name::String ="" 
+
+        
+
+        VARS_TO_QC::Vector{String} = ["VV", "ZZ"]
+        QC_SUFFIX::String = "_QC"
+
+        ###options are "" or "balanced" 
+        class_weights::String = ""
+        
+    end 
+
+
+    function compute_balanced_class_weights(samples::Vector{<:Real})
+        classes = unique(samples)
+        n_classes = length(classes)
+        n_samples = length(samples)
+        weight_dict = Dict()
+        
+    
+        for class in classes 
+            weight_dict[class] = (n_samples/(n_classes * sum(samples .== class)))
+        end 
+    
+        return(weight_dict)
+        
+    end 
 
     """
 
@@ -54,10 +214,10 @@ module Ronin
     Path to output calculated features to (generally ends in .h5)
 
     ```julia
-    HAS_MANUAL_QC::Bool
+    HAS_INTERACTIVE_QC::Bool
     ```
-    Specifies whether or not the file(s) have already undergone a manual QC procedure. 
-    If true, function will also output a `Y` array used to verify where manual QC removed gates. This array is
+    Specifies whether or not the file(s) have already undergone a interactive QC procedure. 
+    If true, function will also output a `Y` array used to verify where interactive QC removed gates. This array is
     formed by considering where gates with non-missing data in raw scans (specified by `remove_variable`) are
     set to missing after QC is performed. 
 
@@ -102,7 +262,7 @@ module Ronin
     ```
     Whether or not to write features out to file 
     """
-    function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_MANUAL_QC::Bool; 
+    function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_INTERACTIVE_QC::Bool; 
         verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false, QC_variable::String = "VG", remove_variable::String = "VV", 
         replace_missing::Bool = false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String = "")
 
@@ -132,7 +292,8 @@ module Ronin
     
         newX = X = Matrix{Float64}(undef,0,output_cols)
         newY = Y = Matrix{Int64}(undef, 0,1) 
-    
+        newIdx = index = Matrix{Bool}(undef,0,1)
+
         
         starttime = time() 
     
@@ -143,14 +304,14 @@ module Ronin
 
                 if QC_mask
                     currmask = Matrix{Bool}(.! map(ismissing, cfrad[mask_name][:,:]))
-                    (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
-                                                HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                    (newX, newY, newIdx) = process_single_file(cfrad, argument_file; 
+                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                                 REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing, feature_mask = currmask, mask_features = true)
                     
                 else 
-                    (newX, newY, indexer) = process_single_file(cfrad, argument_file; 
-                                                HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                    (newX, newY, newIdx) = process_single_file(cfrad, argument_file; 
+                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                                 REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing)
                 end 
@@ -175,24 +336,25 @@ module Ronin
 
             X = vcat(X, newX)::Matrix{Float64}
             Y = vcat(Y, newY)::Matrix{Int64}
+            index = vcat(index, newIdx)::Matrix{Bool}
 
         end 
     
         println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 2)) SECONDS")
     
         ###Get verification information 
-        ###0 indicates NON METEOROLOGICAL data that was removed during manual QC
-        ###1 indicates METEOROLOGICAL data that was retained during manual QC 
+        ###0 indicates NON METEOROLOGICAL data that was removed during interactive QC
+        ###1 indicates METEOROLOGICAL data that was retained during interactive QC 
         
         ##Probably only want to write once, I/O is very slow 
         if write_out
             println()
             println("WRITING DATA TO FILE OF SHAPE $(size(X))")
-            X
             println("X TYPE: $(typeof(X))")
             write_dataset(fid, "X", X)
             write_dataset(fid, "Y", Y)
             close(fid)
+            return X, Y
         else
             close(fid)
             return X, Y
@@ -234,10 +396,10 @@ module Ronin
     Location to output the calculated feature data to. 
 
     ```julia
-    HAS_MANUAL_QC::Bool
+    HAS_INTERACTIVE_QC::Bool
     ```
-    Specifies whether or not the file(s) have already undergone a manual QC procedure. 
-    If true, function will also output a `Y` array used to verify where manual QC removed gates. This array is
+    Specifies whether or not the file(s) have already undergone a interactive QC procedure. 
+    If true, function will also output a `Y` array used to verify where interactive QC removed gates. This array is
     formed by considering where gates with non-missing data in raw scans (specified by `remove_variable`) are
     set to missing after QC is performed. 
 
@@ -283,7 +445,7 @@ module Ronin
     Whether or not to write out to file. 
     """
     function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
-        ,output_file::String, HAS_MANUAL_QC::Bool; verbose::Bool=false,
+        ,output_file::String, HAS_INTERACTIVE_QC::Bool; verbose::Bool=false,
          REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable::String = "VG", remove_variable::String = "VV", 
          replace_missing::Bool=false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String="")
 
@@ -313,7 +475,6 @@ module Ronin
     
         newX = X = Matrix{Float64}(undef,0,output_cols)
         newY = Y = Matrix{Int64}(undef, 0,1) 
-    
         
         starttime = time() 
     
@@ -327,13 +488,13 @@ module Ronin
 
                     currmask = Matrix{Bool}(.! map(ismissing, cfrad[mask_name][:,:]))
                     (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
-                                                HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                                 REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing, feature_mask = currmask, mask_features = true)
                     
                 else 
                     (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
-                                                HAS_MANUAL_QC = HAS_MANUAL_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
+                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
                                                 REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing)
                 end 
@@ -365,8 +526,8 @@ module Ronin
         println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 2)) SECONDS")
     
         ###Get verification information 
-        ###0 indicates NON METEOROLOGICAL data that was removed during manual QC
-        ###1 indicates METEOROLOGICAL data that was retained during manual QC 
+        ###0 indicates NON METEOROLOGICAL data that was removed during interactive QC
+        ###1 indicates METEOROLOGICAL data that was retained during interactive QC 
         
         ##Probably only want to write once, I/O is very slow 
         if write_out
@@ -973,18 +1134,18 @@ module Ronin
     
     """
     function evaluate_model(model_path::String, input_file_dir::String, config_file_path::String; mode="C",
-        HAS_MANUAL_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
+        HAS_INTERACTIVE_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
         QC_variable="VG", remove_variable = "VV", replace_missing = false, output_file = "_.h5", write_out=false, col_subset=:, proba_seq::StepRangeLen = .1:.1:.9)
 
         model = load_object(model_path) 
 
         if mode == "C"
 
-            if (!HAS_MANUAL_QC)
-                Exception("ERROR: PLEASE SET HAS_MANUAL_QC TO TRUE, AND SPECIFY QC_VARIABLE")
+            if (!HAS_INTERACTIVE_QC)
+                Exception("ERROR: PLEASE SET HAS_INTERACTIVE_QC TO TRUE, AND SPECIFY QC_VARIABLE")
             end 
 
-            X, Y = calculate_features(input_file_dir, config_file_path, output_file, HAS_MANUAL_QC 
+            X, Y = calculate_features(input_file_dir, config_file_path, output_file, HAS_INTERACTIVE_QC 
                             ; verbose=verbose, REMOVE_LOW_NCP=REMOVE_LOW_NCP, REMOVE_HIGH_PGG=REMOVE_HIGH_PGG, 
                             QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
                             write_out=write_out)
@@ -1036,7 +1197,7 @@ module Ronin
             push!(prob_level, prob) 
 
             push!(prec, tpc / (tpc + fpc) )
-            push!(rec, tpc / (tpc + fnc))
+            push!(rec,  tpc / (tpc + fnc) )
 
             ###Removal is the fraction of true negatives of total negatives 
             push!(removal, tnc / (tnc + fpc))
@@ -1269,7 +1430,7 @@ module Ronin
             try
             
                 Xn, Yn, indexern = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, QC_variable = QC_variable,
-                                                            REMOVE_LOW_NCP = true, remove_variable=indexer_var, HAS_MANUAL_QC = true)
+                                                            REMOVE_LOW_NCP = true, remove_variable=indexer_var, HAS_INTERACTIVE_QC = true)
                 println("\r\nCompleted in $(time()-starttime ) seconds")
 
                     ##Load saved RF model 
@@ -1316,7 +1477,8 @@ module Ronin
         return (X, Y, indexer, predictions, false_positives_idx, false_negatives_idx) 
     end 
 
-
+    
+    ###UNTESTED! 
     function get_QC_mask(file_path::String, config_file_path::String, 
         model_path::String; indexer_var::String="VV", decision_threshold::Float64 = .5, write_to_file::Bool=true, mask_name::String="QC_MASK")
 
@@ -1381,8 +1543,464 @@ module Ronin
 
 
 
+    """
+    All-in-one function to take in a set of radar data, calculate input features, and train a chain of random forest models 
+    for meteorological/non-meteorological gate identification. 
+
+    #Required arguments 
+    ```julia
+    config::ModelConfig
+    ```
+    Struct containing configuration info for model training 
+    """
+    function train_multi_model(config::ModelConfig)
+        ##Quick input sanitation check 
+        @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
+
+        full_start_time = time() 
+        ###Iteratively train models and apply QC_scan with the specified probabilites to train a multi-pass model 
+        ###pipeline 
+        for (i, model_path) in enumerate(config.model_output_paths)
+            
+           
+            out = config.feature_output_paths[i] 
+            
+            ##If execution proceeds past the first iteration, a composite model is being created, and 
+            ##so a further mask will be applied to the features 
+            if i > 1
+                QC_mask = true 
+            else 
+                QC_mask = false 
+            end 
+
+            QC_mask ? mask_name = config.mask_name : mask_name = ""
+
+            starttime = time() 
+            if config.file_preprocessed[i]
+
+                print("Reading input features from file $(out)...\n")
+                h5open(out) do f
+                    X = f["X"][:,:]
+                    Y = f["Y"][:,:]
+                end 
+
+            else
+                printstyled("\nCALCULATING FEATURES FOR PASS: $(i)\n", color=:green)
+                X,Y = calculate_features(config.input_path, config.input_config, out, true; 
+                                    verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
+                                    REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
+                                    remove_variable = config.remove_var, replace_missing = config.replace_missing,
+                                    write_out = config.write_out, QC_mask = QC_mask, mask_name = mask_name)
+                printstyled("FINISHED CALCULATING FEATURES FOR PASS $(i) in $(round(time() - starttime, digits = 3)) seconds...\n", color=:green)
+            end 
+
+            printstyled("\nTRAINING MODEL FOR PASS: $(i)\n", color=:green)
+            starttime = time() 
+
+            class_weights = Vector{Float32}([0.0,1.0])
+            ##Train model based on these features 
+            if config.class_weights != ""
+
+                if lowercase(config.class_weights) != "balanced"
+                    printstyled("ERROR: UNKNOWN CLASS WEIGHT $(config.class_weights)... \nContinuing with no weighting\n", color=:yellow)
+                else 
+
+                    class_weights = Vector{Float32}(fill(0,length(Y[:,:][:])))
+                    weight_dict = compute_balanced_class_weights(Y[:,:][:])
+                    for class in keys(weight_dict)
+                        class_weights[Y[:,:][:] .== class] .= weight_dict[class]
+                    end 
+                end 
+            end 
+
+        
+            train_model(out, model_path, class_weights = class_weights)
+
+            ##Apply QC so that it will propagate to next pass of model 
+            ##The variable being QC'ed here will be the raw variable as specified by the user 
+            QC_scan(config.input_path, config.input_config, model_path;
+                    VARIABLES_TO_QC = [config.remove_var], QC_suffix = config.QC_SUFFIX,
+                    indexer_var = config.remove_var, decision_threshold = config.met_probs[i], 
+                    REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP=config.REMOVE_LOW_NCP)
+        
+        end 
+        printstyled("\n COMPLETED TRAINING MODEL IN $(round(time() - full_start_time, digits = 3)) seconds...\n", color=:green)
+
+    end 
+
+
+    ###End user will have to be careful here, because changing the probabilities upstream will propagate 
+    ###into the calculated features 
+    """
+
+
+    """
+    function predict_multi_model(config::ModelConfig)
+
+
+        for (i, model_path) in enumerate(config.model_output_paths)
+            
+            out = config.feature_output_paths[i]  
+
+            if i > 1
+                QC_mask = true 
+            else 
+                QC_mask = false 
+            end 
+
+            QC_mask ? mask_name = config.mask_name : mask_name = ""
+
+            ##Get features, then calculate predictions on this set of features with existing model 
+            calculate_features(config.input_path, config.input_config, out, true; 
+                                verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
+                                REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
+                                remove_variable = config.remove_var, replace_missing = config.replace_missing,
+                                write_out = config.write_out, QC_mask = QC_mask, mask_name = mask_name)
+            
+            QC_scan(config.input_path, config.input_config, model_path; VARIABLES_TO_QC = [config.remove_var], 
+            QC_suffix = config.QC_suffix, indexer_var = config.remove_var, decision_threshold = config.met_probs[i])
+
+        end 
+
+        out = config.feature_output_paths[-1]
+        model_path = config.model_output_paths[-1]
+
+
+        predict_with_model(model_path, out)
+        ###On final iteration, actually predict with the model and return these predictions 
+    end 
 
     
+    function QC_scan(input_cfrad::String, features::Matrix{Float64}, indexer::Vector{Bool}, config::ModelConfig, iter::Int64)
+        
+        input_set = NCDataset(input_cfrad, "a") 
+        new_model = load_object(config.model_output_paths[iter])
+        decision_threshold = config.met_probs[iter] 
+        cfrad_dims = (input_set.dim["range"], input_set.dim["time"])
+        
+        VARIABLES_TO_QC = config.VARS_TO_QC
+        met_predictions = DecisionTree.predict_proba(new_model, features)[:, 2]
+        predictions = met_predictions .> decision_threshold
+        starttime=time() 
+        
+        ##QC each variable in VARIALBES_TO_QC
+        for var in VARIABLES_TO_QC
+
+            ##Create new field to reshape QCed field to 
+            NEW_FIELD = missings(Float64, cfrad_dims) 
+            ##Only modify relevant data based on indexer, everything else should be fill value 
+            QCED_FIELDS = input_set[var][:][indexer]
+
+            NEW_FIELD_ATTRS = Dict(
+                "units" => input_set[var].attrib["units"],
+                "long_name" => "Random Forest Model QC'ed $(var) field"
+            )
+
+            ##Set MISSINGS to fill value in current field
+            
+            initial_count = count(.!map(ismissing, QCED_FIELDS))
+            ##Apply predictions from model 
+            ##If model predicts 1, this indicates a prediction of meteorological data 
+            QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : missing, enumerate(QCED_FIELDS))
+            final_count = count(.!map(ismissing, QCED_FIELDS))
+            
+            
+            ###Need to reconstruct original 
+            NEW_FIELD = NEW_FIELD[:]
+            NEW_FIELD[indexer] = QCED_FIELDS
+            NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
+
+
+            try 
+                defVar(input_set, var * config.QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
+            catch e
+                ###Simply overwrite the variable 
+                if e.msg == "NetCDF: String match to name in use"
+                    if config.verbose
+                        println("Already exists... overwriting") 
+                    end 
+                    input_set[var*config.QC_SUFFIX][:,:] = NEW_FIELD 
+                else 
+                    throw(e)
+                end 
+            end 
+            if config.verbose
+                println("\r\nCompleted in $(time()-starttime ) seconds")
+                println()
+                printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
+                println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
+            end 
+
+        end 
+
+        close(input_set) 
+                
+    end 
+
+    function QC_scan(input_set::NCDataset, new_model, config::ModelConfig, iter::Int64, QC_mask::Bool, feature_mask::Matrix{Bool})
+            
+        starttime=time() 
+
+        features, Y, indexer = process_single_file(input_set, config.input_config, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
+        , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
+        QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
+        mask_features = QC_mask, feature_mask = feature_mask) 
+    
+    
+        decision_threshold = config.met_probs[iter] 
+        cfrad_dims = (input_set.dim["range"], input_set.dim["time"])
+        
+        VARIABLES_TO_QC = config.VARS_TO_QC
+        met_predictions = DecisionTree.predict_proba(new_model, features)[:, 2]
+        predictions = met_predictions .> decision_threshold
+        
+        ##QC each variable in VARIALBES_TO_QC
+        for var in VARIABLES_TO_QC
+    
+            ##Create new field to reshape QCed field to 
+            NEW_FIELD = missings(Float64, cfrad_dims) 
+            ##Only modify relevant data based on indexer, everything else should be fill value 
+            QCED_FIELDS = input_set[var][:][indexer]
+    
+            NEW_FIELD_ATTRS = Dict(
+                "units" => input_set[var].attrib["units"],
+                "long_name" => "Random Forest Model QC'ed $(var) field"
+            )
+    
+            ##Set MISSINGS to fill value in current field
+            
+            initial_count = count(.!map(ismissing, QCED_FIELDS))
+            ##Apply predictions from model 
+            ##If model predicts 1, this indicates a prediction of meteorological data 
+            QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : missing, enumerate(QCED_FIELDS))
+            final_count = count(.!map(ismissing, QCED_FIELDS))
+            
+            
+            ###Need to reconstruct original 
+            NEW_FIELD = NEW_FIELD[:]
+            NEW_FIELD[indexer] = QCED_FIELDS
+            NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
+    
+    
+            try 
+                defVar(input_set, var * config.QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
+            catch e
+                print("INPUT_SET $(typeof(input_set)), VAR: $(typeof(var))")
+                ###Simply overwrite the variable 
+                if e.msg == "NetCDF: String match to name in use"
+                    if config.verbose
+                        println("Already exists... overwriting") 
+                    end 
+                    input_set[var*config.QC_SUFFIX][:,:] = NEW_FIELD 
+                else 
+                    throw(e)
+                end 
+            end 
+    
+            if config.verbose
+                println("\r\nCompleted in $(time()-starttime ) seconds")
+                println()
+                printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
+                println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
+            end 
+    
+        end 
+    
+        close(input_set) 
+                
+    end     
+
+    function QC_scan(config::ModelConfig)
+
+        @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
+    
+        ###Let's get the files 
+        if isdir(config.input_path)
+            files = parse_directory(config.input_path)
+        else
+            files = [config.input_path]
+        end 
+    
+    
+        ###Load models into memory 
+    
+        printstyled("LOADING MODELS....\n", color=:green)
+    
+        models = [] 
+    
+        for model_path in config.model_output_paths 
+            push!(models, load_object(model_path))
+        end 
+    
+        for file in files
+    
+            print("QC-ing $(file)")
+            starttime = time() 
+            X = ""
+            Y= ""
+            indexer = ""
+            
+            for (i, model_path) in enumerate(config.model_output_paths)
+    
+                ###We don't need to write these out, just use them briefly 
+                NCDataset(file, "a") do f
+                 
+    
+                    if i > 1
+                        QC_mask = true
+                        data = f[config.mask_name][:,:]
+                        feature_mask = Matrix{Bool}( .! map(ismissing,data))
+                    else 
+                        QC_mask = config.QC_mask 
+                        feature_mask = QC_mask ? config.mask_name : [true true; false false]
+                    end 
+                    ###Need to actually pass the QC mask 
+                    
+                    QC_scan(f, models[i], config, i, QC_mask, feature_mask)
+
+                end 
+    
+            end 
+    
+            print("FINISHED QC-ing$(file) in $(round(time()-starttime, digits=2))")
+        end 
+    
+    end 
+
+
+
+    """
+        ```composite_prediction(config::ModelConfig)```
+
+        Passes feature data through a model or series of models and returns model classifications. Applies configuration such as 
+        masking and basic QC (high PGG/low NCP) specified by `config`
+
+        ### Returns 
+        
+        * `predictions::Vector{Bool}` Model classifications for gates that passed basic quality control thresholds 
+        * `values::BitVector` Verification gates correspondant to predictions 
+        * `init_idxers::Vector{Vector{Float64}}` Information about where original radar data did/did not meet basic quality control thresholds. 
+                                                Each vector contains a flattened vector describing whether or not a given gate was predicted on. 
+    """
+    function composite_prediction(config::ModelConfig; write_features_out::Bool = false, feature_outfile::String="placeholder.h5")
+
+        @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
+
+        ###Let's get the files 
+        if isdir(config.input_path)
+            files = parse_directory(config.input_path)
+        else
+            files = [config.input_path]
+        end 
+
+        predictions = Vector{Bool}(undef, 0)
+        values = BitVector(undef, 0)
+
+        init_idxers = Vector{Vector{Float64}}(undef, 0)
+
+        printstyled("LOADING MODELS....\n", color=:green)
+        flush(stdout)
+        models = [] 
+
+        for path in config.model_output_paths
+            push!(models, load_object(path))
+        end 
+
+        for file in files
+
+            init_idxer = Matrix{Bool}(undef, 0, 1)
+            final_idxer = Matrix{Bool}(undef, 0, 1)
+
+            curr_Y = Vector{Bool}(undef, 0)
+            final_predictions = Vector{Bool}(undef, 0)
+
+            for (i, model_path) in enumerate(config.model_output_paths)
+                
+            
+                ###We don't need to write these out, just use them briefly 
+                NCDataset(file, "a") do f
+
+                    if i > 1
+                        QC_mask = true
+                        feature_mask = Matrix{Bool}( .! map(ismissing, f[config.mask_name][:,:]))
+                    else 
+                        QC_mask = false 
+                        feature_mask = [true true; false false]
+                    end 
+                    ###Need to actually pass the QC mask 
+                    X, Y, indexer = process_single_file(f, config.input_config, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
+                        , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
+                        QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
+                        mask_features = QC_mask, feature_mask = feature_mask)
+
+                    if i == 1
+                        init_idxer = indexer 
+                        curr_Y = Y
+                    end 
+
+                    final_idxer = indexer 
+
+                    QC_scan(f, models[i], config, i, QC_mask, feature_mask) 
+
+                    if i == config.num_models
+                        curr_model = models[i]
+                        curr_proba = config.met_probs[i]
+                        met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
+                        final_predictions = met_probs .> curr_proba 
+                    end 
+
+                end 
+
+
+            end 
+            
+            push!(init_idxers, init_idxer)    
+            ###Add verification to full array 
+            values = vcat(values, curr_Y)      
+            
+            ##First need to determine the differenc between the initial indexer and the full scan? 
+
+            ###init_indexer contains the gates in the scan that did not meet the basic quality control thresholds. 
+            ###A space will be needed in the predictions for each positive value here. 
+            ###final_idxer - init_indexer contains gates that were marked as non-meteorological throughout the course 
+            ###of applying the composite model. The final prediction then is ONLY on the gates that are still valid 
+            ###in final_idxer 
+            ###We are interested in returning the predictions and the validation for a set of gates 
+            curr_predictions = fill(false, (sum(init_idxer))) 
+            pred_idxer = (final_idxer[init_idxer] .== true)
+        
+
+            curr_predictions[pred_idxer] = final_predictions 
+
+            ##Take the difference between the initial indexer and the final indexer. 
+            ##Gates that are DIFFERENT were removed during the first several passes, and gates that are the SAME (valid in both indexers) 
+            ##will be the gates that the final model will be run upon
+            predictions = vcat(predictions, curr_predictions)
+
+        end 
+        
+        if write_features_out
+            h5open(feature_outfile, "w") do f 
+                write_dataset(f, "Predictions", predictions)
+                write_dataset(f, "Verification", values)
+                ##Below line is giving me Type Array does not have a definite size errors 
+                #write_dataset(f, "Scan_indexers", init_idxers)
+            end
+        end 
+
+        return(predictions, values, init_idxers)
+        
+    end 
+
 end 
 
-    
+    # function evaluate_composite_model(config::ModelConfig)
+
+
+    #     for (i, model_path) in enumerate(config.model_output_paths)
+    #          out = config.feature
+    #     end 
+
+    # end 
+
+
