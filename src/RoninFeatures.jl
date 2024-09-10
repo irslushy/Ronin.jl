@@ -298,7 +298,7 @@ function get_task_params(params_file, variablelist; delimiter=",")
                 expr_ret = match(func_regex,token)
 
                 if token == ""
-                    print("CONTINUING") 
+                    printstyled("WARNING: Empty Token in config file... continuing to next token...\n", color=:yellow) 
                     continue 
                 end 
                 ###If it is, make sure that it is both a valid function and a valid variable 
@@ -393,7 +393,7 @@ Path to file contaning config/task information.
 # Optional keyword arguments 
 
 ```julia 
-HAS_MANUAL_QC::Bool = false
+HAS_INTERACTIVE_QC::Bool = false
 ```
 If the scan has already had a human apply quality control to it, set to `true`. Otherwise, `false`
 
@@ -432,14 +432,14 @@ For spatial parameters, whether or not to replace `missings` values with `FILL_V
         (non-missing, meeting NCP/PGG thresholds) the function finds, and num_features is the 
         number of features specified in the argument file to calculate. 
 
-    -Y: IF HAS_MANUAL_QC == true, will return Y, array containing 1 if a datapoint was retained 
-        during manual QC, and 0 otherwise. 
+    -Y: IF HAS_INTERACTIVE_QC == true, will return Y, array containing 1 if a datapoint was retained 
+        during interactive QC, and 0 otherwise. 
 
     -INDEXER: Based on remove_variable as described above, contains boolean array specifiying
                 where in the scan features valid data and where does not. 
 """
 function process_single_file(cfrad::NCDataset, argfile_path::String; 
-    HAS_MANUAL_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
+    HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
      QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false,
     mask_features::Bool = false, feature_mask::Matrix{Bool} = [true true ; false false;])
 
@@ -590,11 +590,11 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
     
     ###Allows for use with already QC'ed files to output a Y array for 
     ###model training 
-    if HAS_MANUAL_QC
+    if HAS_INTERACTIVE_QC
 
         #println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
         startTime = time() 
-        ###try catch block here to see if the scan has manual QC
+        ###try catch block here to see if the scan has interactive QC
         ###Filter the input arrays first 
         VG = cfrad[QC_variable][:][INDEXER]
         VV = cfrad[remove_variable][:][INDEXER]
@@ -616,7 +616,7 @@ end
 ###In this case will also pass the tasks to complete as a vector 
 ###weight_matrixes are also implicitly the window size 
 function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}; 
-    HAS_MANUAL_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", remove_missing=true,
+    HAS_INTERACTIVE_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", remove_missing=true,
     replace_missing = false,mask_features=false, feature_mask::Matrix{Bool} = [true true ; false false])
 
 
@@ -756,11 +756,11 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
     
     ###Allows for use with already QC'ed files to output a Y array for 
     ###model training 
-    if HAS_MANUAL_QC
+    if HAS_INTERACTIVE_QC
 
         #println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
         startTime = time() 
-        ###try catch block here to see if the scan has manual QC
+        ###try catch block here to see if the scan has interactive QC
         ###Filter the input arrays first 
         VG = cfrad[QC_variable][:][INDEXER]
         VV = cfrad[remove_variable][:][INDEXER]
@@ -777,7 +777,7 @@ end
 
 
 function process_single_file_original(cfrad::NCDataset, argfile_path::String; 
-    HAS_MANUAL_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
+    HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
      QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false)
 
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
@@ -873,7 +873,7 @@ end
 #     Likely unstable! Don't use for operations yet 
 # """
 # function process_single_file_threaded(cfrad::NCDataset, argfile_path::String; 
-#     HAS_MANUAL_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
+#     HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
 #         QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false)
 
    
@@ -963,11 +963,11 @@ end
     
 #     ###Allows for use with already QC'ed files to output a Y array for 
 #     ###model training 
-#     if HAS_MANUAL_QC
+#     if HAS_INTERACTIVE_QC
 
 #         #println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
 #         startTime = time() 
-#         ###try catch block here to see if the scan has manual QC
+#         ###try catch block here to see if the scan has INTERACTIVE QC
 #         ###Filter the input arrays first 
 #         VG = cfrad[QC_variable][:][INDEXER]
 #         VV = cfrad[remove_variable][:][INDEXER]
