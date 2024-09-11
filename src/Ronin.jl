@@ -26,7 +26,7 @@ module Ronin
     export train_model 
     export QC_scan, get_QC_mask
     export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
-    export train_multi_model, ModelConfig, composite_prediction
+    export train_multi_model, ModelConfig, composite_prediction, get_contingency 
 
 
 
@@ -1825,7 +1825,7 @@ module Ronin
         ###Load models into memory 
     
         printstyled("LOADING MODELS....\n", color=:green)
-    
+        flush(stdout)
         models = [] 
     
         for model_path in config.model_output_paths 
@@ -1992,15 +1992,26 @@ module Ronin
         
     end 
 
+    function get_contingency(predictions::Vector{Bool}, verification::Vector{Bool}; normalize::Bool = true)
+
+        tpc = count(verification[predictions .== 1] .== 1)
+        tnc = count(verification[predictions .== 0] .== 0)
+    
+        fpc = count(verification[predictions .== 1] .== 0)
+        fnc = count(verification[predictions .== 0] .== 1)
+    
+        row_names = ["Predicted Meteorological", "Predicted Non-Meteorological"]
+        col_names = ["", "True Meteorological", "True Non-Meteorological"]
+    
+        true_met = [tpc, fnc]
+        true_non = [fpc, tnc]
+        
+        if normalize
+            true_met = [round(x / sum(true_met), digits=3) for x in true_met]
+            true_non = [round(x / sum(true_non), digits=3) for x in true_non]
+        end 
+    
+        return(DataFrame(col_names[1] => row_names, col_names[2] => true_met, col_names[3] => true_non))
+    end 
+    
 end 
-
-    # function evaluate_composite_model(config::ModelConfig)
-
-
-    #     for (i, model_path) in enumerate(config.model_output_paths)
-    #          out = config.feature
-    #     end 
-
-    # end 
-
-
