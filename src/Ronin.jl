@@ -26,7 +26,7 @@ module Ronin
     export train_model 
     export QC_scan, get_QC_mask
     export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
-    export train_multi_model, ModelConfig, composite_prediction, get_contingency 
+    export train_multi_model, ModelConfig, composite_prediction, get_contingency, compute_balanced_class_weights
 
 
 
@@ -560,7 +560,7 @@ module Ronin
     ```julia
     model_location::String 
     ```
-    Path to save the trained model out to. Typically should end in `.joblib`
+    Path to save the trained model out to. Typically should end in `.jld2`
     
     # Optional keyword arguments 
     ```julia
@@ -691,7 +691,7 @@ module Ronin
     ```julia
     model_path::String 
     ```
-    Location of trained RF model (saved in joblib file format) 
+    Location of trained RF model (saved in jld2 file format) 
 
     ```julia
     input_h5::String 
@@ -752,7 +752,7 @@ module Ronin
     ```julia
     model_path::String 
     ```
-    Location of trained RF model (in joblib file format) 
+    Location of trained RF model (in jld2 file format) 
 
     # Optional Arguments 
     ```julia
@@ -1308,6 +1308,10 @@ module Ronin
 
 
     """
+        error_characteristics(file_path::String, config_file_path::String, model_path::String;
+        indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float64 = .5, write_out::Bool=false,
+        output_name::String="Model_Error_Characteristics.h5")
+
     Function to process a set of cfradial files that have already been interactively QC'ed and return information about where errors 
     occur in the files relative to model predictions. Requires a pre-trained model and configuration, as well as scans that 
     have already been interactively quality controlled. 
@@ -1544,6 +1548,8 @@ module Ronin
 
 
     """
+        train_multi_model(config::ModelConfig)
+
     All-in-one function to take in a set of radar data, calculate input features, and train a chain of random forest models 
     for meteorological/non-meteorological gate identification. 
 
@@ -1870,17 +1876,17 @@ module Ronin
 
 
     """
-        ```composite_prediction(config::ModelConfig)```
+        composite_prediction(config::ModelConfig)
 
-        Passes feature data through a model or series of models and returns model classifications. Applies configuration such as 
-        masking and basic QC (high PGG/low NCP) specified by `config`
+    Passes feature data through a model or series of models and returns model classifications. Applies configuration such as 
+    masking and basic QC (high PGG/low NCP) specified by `config`
 
-        ### Returns 
-        
-        * `predictions::Vector{Bool}` Model classifications for gates that passed basic quality control thresholds 
-        * `values::BitVector` Verification gates correspondant to predictions 
-        * `init_idxers::Vector{Vector{Float64}}` Information about where original radar data did/did not meet basic quality control thresholds. 
-                                                Each vector contains a flattened vector describing whether or not a given gate was predicted on. 
+    ### Returns 
+    
+    * `predictions::Vector{Bool}` Model classifications for gates that passed basic quality control thresholds 
+    * `values::BitVector` Verification gates correspondant to predictions 
+    * `init_idxers::Vector{Vector{Float64}}` Information about where original radar data did/did not meet basic quality control thresholds. 
+                                            Each vector contains a flattened vector describing whether or not a given gate was predicted on. 
     """
     function composite_prediction(config::ModelConfig; write_features_out::Bool = false, feature_outfile::String="placeholder.h5")
 

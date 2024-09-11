@@ -3,7 +3,7 @@ Ronin (Random forest Optimized Nonmeteorological IdentificatioN) is a package th
 
 
 
-# Workflow Walkthrough 
+# Single-model Workflow Walkthrough 
 
 ![Roninflowchart](./imgs/Ronin_flowchart.png)
 
@@ -13,7 +13,7 @@ Ronin (Random forest Optimized Nonmeteorological IdentificatioN) is a package th
 
 The first step in the process is to split our data so that some of it may be utilized for model training and the other portion for model testing. It's important to keep the two sets separate, otherwise the model may overfit. 
 
-The basic requirement here is to have a directory or directories of cfradial scans, and two directories to put training and testing files, respectively. Make sure that no other files are present in these directories. To do this, the [`split_training_testing!`](https://github.com/irslushy/Ronin.jl/blob/259aa4d306e09fedf9d4208bcc8a584fbabd89a2/src/Ronin.jl#L612) function will be used. For example, if one had two cases of radar data, located in `./CASE1/` and `./CASE2/` and wanted to split into `./TRAINING` and `./TESTING`, execute the command 
+The basic requirement here is to have a directory or directories of cfradial scans, and two directories to put training and testing files, respectively. Make sure that no other files are present in these directories. To do this, the [`split_training_testing!`](https://github.com/irslushy/Ronin.jl/tree/main/src/Ronin.jl#943) function will be used. For example, if one had two cases of radar data, located in `./CASE1/` and `./CASE2/` and wanted to split into `./TRAINING` and `./TESTING`, execute the command 
 
 ```julia
 split_training_testing(["./CASE1", "./CASE2"], "./TRAINING", "./TESTING")
@@ -23,7 +23,7 @@ More information about this function is contained within the docs.
 
 --- 
 
-Now that we have split the input files, we can proceed to calculate the features used to train and test our Random Forest model. Further details are contained within the aforementioned manuscript, but it has been shown that the parameters contained [here](https://github.com/irslushy/Ronin.jl/blob/259aa4d306e09fedf9d4208bcc8a584fbabd89a2/MODELS/DesRosiers_Bell_23/config.txt) are most effective for discriminating between meteorological/non-meteorological gates. For this, we will use the [calculate_features](https://github.com/irslushy/Ronin.jl/blob/259aa4d306e09fedf9d4208bcc8a584fbabd89a2/src/Ronin.jl#L96-L181) function. Since we are calculating features to **train** a model at this point, we will assume that they have already a human apply QC. To get the most skillful model possible, we will want to remove "easy" cases from the training set, so set `REMOVE_LOW_NCP=true` and `REMOVE_HIGH_PGG=true` to ignore data not meeting minimum quality thresholds. It's also important to specify which variable contained with the input scans has already been QC'ed - in the ELDORA scans, this is `VG`. `missing` values must also be removed from the initial training set, so we'll use a raw variable `VV` to determine where these gates are located. With that said, one may now invoke 
+Now that we have split the input files, we can proceed to calculate the features used to train and test our Random Forest model. Further details are contained within the aforementioned manuscript, but it has been shown that the parameters contained [here](https://github.com/irslushy/Ronin.jl/blob/259aa4d306e09fedf9d4208bcc8a584fbabd89a2/MODELS/DesRosiers_Bell_23/config.txt) are most effective for discriminating between meteorological/non-meteorological gates. For this, we will use the [calculate_features](https://github.com/irslushy/Ronin.jl/tree/main/src/Ronin.jl#L265) function. Since we are calculating features to **train** a model at this point, we will assume that intreactive QC has already been applied to them. To get the most skillful model possible, we will want to remove "easy" cases from the training set, so set `REMOVE_LOW_NCP=true` and `REMOVE_HIGH_PGG=true` to ignore data not meeting minimum quality thresholds. It's also important to specify which variable contained with the input scans has already been QC'ed - in the ELDORA scans, this is `VG`. `missing` values must also be removed from the initial training set, so we'll use a raw variable `VV` to determine where these gates are located. With that said, one may now invoke 
 
 ```julia
 calculate_features("./TRAINING", "./config.txt", "TRAINING_FEATURES.h5", true;
@@ -42,10 +42,28 @@ This is a somewhat computationally expensive process for large datasets >1000 sc
 ## Training a Random Forest Model 
 ---
 
-Now that the somewhat arduous process of calculating input features has completed, it's time to train our model! We'll use the **training** set for this, which we have previously defined to be located at `./TRAINING_FEATURES.h5`. Invoke as follows
+Now that the somewhat arduous process of calculating input features has completed, it's time to train our model! We'll use the **training** set for this, which we have previously defined to be located at `./TRAINING_FEATURES.h5`. 
+
+First, in order to combat the class imbalance problem, we must calculate weights for the non-meteorological and meteorological gates. This can be achieved as follows.
 
 ```julia
-train_model("./TRAINING_FEATURES.h5", "TRAINED_MODEL.joblib"; verify=true, verify_out="TRAINING_SET_VERIFICATION.h5")
+weights = Vector{Float64}(undef, 0)
+class_weights = h5open("TRAINING_FEATURES.h5") do f
+    samples = f["Y"][:,:][:]
+    class_weights = Vector{Float32}(fill(0,length(samples)))
+    weight_dict = compute_balanced_class_weights(samples)
+
+    for class in keys(weight_dict) 
+        class_weights[samples .== class] .= weight_dict[class]
+    end 
+    return(class_weights)
+end 
+```
+
+Now we can train the model! 
+
+```julia
+train_model("./TRAINING_FEATURES.h5", "TRAINED_MODEL.joblib"; class_weights = Vector{Float32}(class_weights) , verify=true, verify_out="TRAINING_SET_VERIFICATION.h5")
 ```
 
 This will train a model based off the information contained within `TRAINING_FEATURES.h5`, saving it for further use at `./TRAINED_MODEL.joblib`. The `verify` keyword arguments means that, once trained, the model will be automatically applied to the training dataset and the predictions will be output, along with the ground truth/correct answers, to the h5 file at `TRAINING_SET_VERIFICATION.h5`.   
@@ -92,14 +110,14 @@ Calculates the average of each gate of the variable with name VAR in the given r
 ---
 ### **RNG/NRG**
 Calculates the range of all radar gates (RNG) from the airborne platform, or normalized by altitude (NRG). 
-___ 
+---
 ### **PGG**
 **P**robability of **G**round **G**ate - a geometric calculation that gives the probability that a given radar gate is a result of reflection from the ground. 
-___
+---
 
 ### **AHT**
 **A**ircraft **H**eigh**T** - calculates platform height while factoring in Earth curvature. 
-___ 
+---
 
 
 ### **Implementing a new parameter**
@@ -126,7 +144,7 @@ Some important data convetions to make note of:
 
 * **Meteorological Data is referred to by 1 or `true`**
 * **Non-Meteorological Data is referred to by 0 or `false`**
-* **ELDORA**scan variable names: 
+* **ELDORA** scan variable names: 
     * Raw Velocity: **VV**
     * QC'ed Velocity (Used for ground truth): **VG**
     * Raw Reflectivity: **ZZ**
@@ -136,5 +154,5 @@ Some important data convetions to make note of:
     * Raw Velocity: **VEL**
     * QC'ed Velocity (Used for ground truth): **VG**
     * Raw Reflectivity: **DBZ**
-    * QC'ed Reflectivity: **ZZ**
+    * QC'ed Reflectivity (Used for ground truth): **ZZ**
     * Normalized Coherent Power/Signal Quality Index: **SQI**
