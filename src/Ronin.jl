@@ -138,6 +138,16 @@ module Ronin
     class_weights::String = ""
     ```
     Class weighting scheme to apply in the training of RF model. Currently only "balanced" is implemented. 
+
+    ```julia 
+    n_trees::Int = 21
+    ```
+    Number of trees in the random forest 
+
+    ```julia 
+    max_depth::Int = 14
+    ```
+    Maximum depth of any one tree in the random forest 
     """
     Base.@kwdef struct ModelConfig
 
@@ -170,6 +180,9 @@ module Ronin
 
         ###options are "" or "balanced" 
         class_weights::String = ""
+
+        n_trees::Int = 21
+        max_depth::Int=14
         
     end 
 
@@ -578,6 +591,11 @@ module Ronin
     col_subset=: 
     ```
     Set of columns from `input_h5` to train model on. Useful if one wishes to train a model while excluding some features from a training set. 
+    
+    ```julia
+    row_subset=:
+    ```
+    Set of rows from `input_h5` to train on.
 
     ```julia
     n_trees::Int = 21
@@ -594,7 +612,7 @@ module Ronin
     ```
     Vector of class weights to apply to each observation. Should be 1 observation per sample in the input data files 
     """
-    function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5", col_subset=:,
+    function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5", col_subset=:, row_subset=:,
                         n_trees::Int = 21, max_depth::Int=14, class_weights::Vector{Float32} = Vector{Float32}([1.,2.]))
 
         ###Load the data
@@ -602,8 +620,8 @@ module Ronin
         printstyled("\nOpening $(radar_data)...\n", color=:blue)
         ###Split into features
 
-        X = read(radar_data["X"])[: , col_subset]
-        Y = read(radar_data["Y"])
+        X = read(radar_data["X"])[row_subset , col_subset]
+        Y = read(radar_data["Y"])[:][row_subset]
 
         model = DecisionTree.RandomForestClassifier(n_trees=n_trees, max_depth=max_depth, rng=50)
     
@@ -708,15 +726,23 @@ module Ronin
     outfile::String = Path to write results to if write_out == true 
     ```
     Results will be written in the h5 format with the name "Predicitions" and "Ground Truth" 
+
+    ```julia
+    row_subset=:
+    ```
+    Selection of rows to predict upon 
+
     """
     function predict_with_model(model_path::String, input_h5::String; write_out::Bool=false, outfile::String="_.h5",
-                                probability_threshold::Float32 = Float32(.5))
-       
+                                probability_threshold::Float32 = Float32(.5), row_subset=:)
+        
+        printstyled("\nLOADING MODEL...\n", color=:green)
+        flush(stdout) 
         new_model = load_object(model_path) 
 
         input_h5 = h5open(input_h5)
-        X = input_h5["X"][:,:]
-        Y = input_h5["Y"][:,:][:]
+        X = input_h5["X"][:,:][row_subset,:]
+        Y = input_h5["Y"][:,:][:][row_subset]
         close(input_h5)
 
         met_probs = DecisionTree.predict_proba(new_model, X)[:, 2]
@@ -1743,7 +1769,8 @@ module Ronin
                 
     end 
 
-    function QC_scan(input_set::NCDataset, new_model, config::ModelConfig, iter::Int64, QC_mask::Bool, feature_mask::Matrix{Bool})
+    function QC_scan(input_set::NCDataset, new_model, config::ModelConfig, iter::Int64, QC_mask::Bool, feature_mask::Matrix{Bool}; 
+                        output_probs::Bool = false, prob_name::String = "")
             
         starttime=time() 
 
@@ -1760,6 +1787,33 @@ module Ronin
         met_predictions = DecisionTree.predict_proba(new_model, features)[:, 2]
         predictions = met_predictions .> decision_threshold
         
+        if output_probs
+
+            if haskey(input_set, prob_name)
+
+                NEW_FIELD = missings(Float64, cfrad_dims)[:]
+                NEW_FIELD[indexer] = met_predictions
+                NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
+                idxer_2d = reshape(indexer, cfrad_dims)
+                input_set[prob_name][idxer_2d] .= predictions 
+
+            else
+                NEW_FIELD = missings(Float64, cfrad_dims)[:]
+                NEW_FIELD[indexer] = met_predictions
+                NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
+
+                NEW_FIELD_ATTRS = Dict(
+                "units" => "Fraction of Decision Trees",
+                "long_name" => "Probability of meteorological gate represented as fraction of       
+                                Decision Trees classifying it as meteorological."
+            )
+                
+                defVar(input_set, prob_name, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
+
+            end 
+
+
+        end 
         ##QC each variable in VARIALBES_TO_QC
         for var in VARIABLES_TO_QC
     
@@ -1816,7 +1870,7 @@ module Ronin
                 
     end     
 
-    function QC_scan(config::ModelConfig)
+    function QC_scan(config::ModelConfig; output_probs = false, prob_name::String = "")
 
         @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
     
@@ -1862,7 +1916,7 @@ module Ronin
                     end 
                     ###Need to actually pass the QC mask 
                     
-                    QC_scan(f, models[i], config, i, QC_mask, feature_mask)
+                    QC_scan(f, models[i], config, i, QC_mask, feature_mask, output_probs=output_probs, prob_name=prob_name)
 
                 end 
     
