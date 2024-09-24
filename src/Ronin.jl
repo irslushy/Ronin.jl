@@ -1971,12 +1971,6 @@ module Ronin
         models = [] 
     
     
-        ###Get dimensions 
-        scan_dims = NCDataset(files[1]) do f
-            (dimsize(f["range"]).range, dimsize(f["time"]).time)
-        end 
-    
-    
         for path in config.model_output_paths
             push!(models, load_object(path))
         end 
@@ -2019,25 +2013,20 @@ module Ronin
                         init_idxer = indexer 
                         curr_Y = Y
                     end 
-                    try 
-                        final_idxer = indexer 
-        
-                        curr_model = models[i]
-                        curr_proba = config.met_probs[i]
-                        met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
-                        curr_probs[indexer] .= met_probs[:]
-                        
-                        if i == config.num_models
-                            final_predictions = met_probs .> curr_proba 
-                        end 
-
-                        QC_scan(f, models[i], config, i, QC_mask, feature_mask) 
-                    catch e
-                        println("CURRENT FILE: $(file)")
-                        println(size(X))
-                        println(size(indxer))
-                        println(size(met_probs))
+                   
+                    final_idxer = indexer 
+    
+                    curr_model = models[i]
+                    curr_proba = config.met_probs[i]
+                    met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
+                    curr_probs[indexer] .= met_probs[:]
+                    
+                    if i == config.num_models
+                        final_predictions = met_probs .> curr_proba 
                     end 
+
+                    QC_scan(f, models[i], config, i, QC_mask, feature_mask) 
+                
     
     
                 end 
