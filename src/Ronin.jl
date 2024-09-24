@@ -1941,45 +1941,60 @@ module Ronin
     * `values::BitVector` Verification gates correspondant to predictions 
     * `init_idxers::Vector{Vector{Float64}}` Information about where original radar data did/did not meet basic quality control thresholds. 
                                             Each vector contains a flattened vector describing whether or not a given gate was predicted on. 
+    * `total_met_probs::Vector{Float64}`If kewyword argument return_probs is set to `true`, then `total_met_probs` will be returned. Each entry 
+                                        into this vector corresponds to the gate represented by predictions and values, and denotes the fraction of 
+                                        trees in the random forest that classified the gate as meteorological.
+
+         All values returned will be only those that passed quality control checks in the first pass of the model 
+        minimum NCP / PGG thresholds. In order to reconstruct a scan, user would need to use the values in the returned indexers. 
     """
-    function composite_prediction(config::ModelConfig; write_features_out::Bool = false, feature_outfile::String="placeholder.h5")
+    function composite_prediction(config::ModelConfig; write_features_out::Bool = false, feature_outfile::String="placeholder.h5", return_probs::Bool=false)
 
         @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
-
+    
         ###Let's get the files 
         if isdir(config.input_path)
             files = parse_directory(config.input_path)
         else
             files = [config.input_path]
         end 
-
+    
         predictions = Vector{Bool}(undef, 0)
         values = BitVector(undef, 0)
-
+        total_met_probs = Vector{Float64}(undef, 0)
+    
         init_idxers = Vector{Vector{Float64}}(undef, 0)
-
+    
         printstyled("LOADING MODELS....\n", color=:green)
         flush(stdout)
         models = [] 
-
+    
+    
+        ###Get dimensions 
+        scan_dims = NCDataset(files[1]) do f
+            (dimsize(f["range"]).range, dimsize(f["time"]).time)
+        end 
+    
+    
         for path in config.model_output_paths
             push!(models, load_object(path))
         end 
-
+        
         for file in files
-
+    
             init_idxer = Matrix{Bool}(undef, 0, 1)
             final_idxer = Matrix{Bool}(undef, 0, 1)
-
+    
             curr_Y = Vector{Bool}(undef, 0)
             final_predictions = Vector{Bool}(undef, 0)
-
+            curr_probs = fill(-1.0, scan_dims[:])
+    
             for (i, model_path) in enumerate(config.model_output_paths)
                 
             
                 ###We don't need to write these out, just use them briefly 
                 NCDataset(file, "a") do f
-
+    
                     if i > 1
                         QC_mask = true
                         feature_mask = Matrix{Bool}( .! map(ismissing, f[config.mask_name][:,:]))
@@ -1992,65 +2007,70 @@ module Ronin
                         , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
                         QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
                         mask_features = QC_mask, feature_mask = feature_mask)
-
+    
                     if i == 1
                         init_idxer = indexer 
                         curr_Y = Y
                     end 
-
+    
                     final_idxer = indexer 
-
+    
+                    curr_model = models[i]
+                    curr_proba = config.met_probs[i]
+                    met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
+                    curr_probs[indexer] .= met_probs[:]
+    
                     QC_scan(f, models[i], config, i, QC_mask, feature_mask) 
-
+    
                     if i == config.num_models
-                        curr_model = models[i]
-                        curr_proba = config.met_probs[i]
-                        met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
                         final_predictions = met_probs .> curr_proba 
                     end 
-
+    
                 end 
-
-
+    
+    
             end 
-            
+    
             push!(init_idxers, init_idxer)    
             ###Add verification to full array 
-            values = vcat(values, curr_Y)      
-            
+            values = vcat(values, curr_Y)  
+            ##We only care about the probabilities where the indexer is 
+            total_met_probs = vcat(total_met_probs, curr_probs[:][init_idxer])
             ##First need to determine the differenc between the initial indexer and the full scan? 
-
+    
             ###init_indexer contains the gates in the scan that did not meet the basic quality control thresholds. 
             ###A space will be needed in the predictions for each positive value here. 
-            ###final_idxer - init_indexer contains gates that were marked as non-meteorological throughout the course 
+            ###Difference of final_indxer and init_index contains gates that were marked as non-meteorological throughout the course 
             ###of applying the composite model. The final prediction then is ONLY on the gates that are still valid 
             ###in final_idxer 
             ###We are interested in returning the predictions and the validation for a set of gates 
             curr_predictions = fill(false, (sum(init_idxer))) 
+            ###The only gates the final pass of the model applied a prediction to will be those where 
+            ###BOTH the final indexer and the initial indexer flagged as valid. Assign the model predictions to these gates.
             pred_idxer = (final_idxer[init_idxer] .== true)
-        
-
             curr_predictions[pred_idxer] = final_predictions 
-
-            ##Take the difference between the initial indexer and the final indexer. 
-            ##Gates that are DIFFERENT were removed during the first several passes, and gates that are the SAME (valid in both indexers) 
-            ##will be the gates that the final model will be run upon
+            ###Add on to final predictions 
             predictions = vcat(predictions, curr_predictions)
-
+    
         end 
         
         if write_features_out
             h5open(feature_outfile, "w") do f 
                 write_dataset(f, "Predictions", predictions)
                 write_dataset(f, "Verification", values)
+                write_dataset(f, "Met_probabilities", met_probs)
                 ##Below line is giving me Type Array does not have a definite size errors 
                 #write_dataset(f, "Scan_indexers", init_idxers)
             end
         end 
-
-        return(predictions, values, init_idxers)
+        if return_probs
+            return(predictions, values, init_idxers, total_met_probs)
+        else 
+            return(predictions, values, init_idxers)
+        end 
         
     end 
+
 
     function get_contingency(predictions::Vector{Bool}, verification::Vector{Bool}; normalize::Bool = true)
 

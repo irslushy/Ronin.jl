@@ -549,6 +549,9 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
     #If there is missing data for the indexer variable at the current gate, 
     #Get rid of it, otherwise go with the original value in the flat mask 
     if mask_features 
+        ###This is a little confusing, but basically currently the INDEXER contains whether or not 
+        ###the value is missing in the original scan. If so, we can already say it's not a valid gate.
+        ###If non-missing, just do whatever the QC_mask says 
         INDEXER = [INDEXER[i] ? false : maskval for (i, maskval) in enumerate(feature_mask[:])]
     else 
         INDEXER = .! INDEXER
