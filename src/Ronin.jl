@@ -150,7 +150,7 @@ module Ronin
     ```
     Maximum depth of any one tree in the random forest 
     """
-    Base.@kwdef struct ModelConfig
+    Base.@kwdef mutable struct ModelConfig
 
         num_models::Int64
         model_output_paths::Vector{String}
@@ -1982,7 +1982,12 @@ module Ronin
         end 
         
         for file in files
-    
+            
+                ###Get dimensions 
+            scan_dims = NCDataset(files[1]) do f
+                (dimsize(f["range"]).range, dimsize(f["time"]).time)
+            end 
+        
             init_idxer = Matrix{Bool}(undef, 0, 1)
             final_idxer = Matrix{Bool}(undef, 0, 1)
     
@@ -1992,7 +1997,8 @@ module Ronin
     
             for (i, model_path) in enumerate(config.model_output_paths)
                 
-            
+                ###REFACTOR NOTES: I THINK PROCESS_SINGLE_FILE CLOSES THE FILE SO WILL NEED TO CHANGE THAT
+                ###TO MOVE OUTSIDE LOOP 
                 ###We don't need to write these out, just use them briefly 
                 NCDataset(file, "a") do f
     
@@ -2013,19 +2019,26 @@ module Ronin
                         init_idxer = indexer 
                         curr_Y = Y
                     end 
-    
-                    final_idxer = indexer 
-    
-                    curr_model = models[i]
-                    curr_proba = config.met_probs[i]
-                    met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
-                    curr_probs[indexer] .= met_probs[:]
-    
-                    QC_scan(f, models[i], config, i, QC_mask, feature_mask) 
-    
-                    if i == config.num_models
-                        final_predictions = met_probs .> curr_proba 
+                    try 
+                        final_idxer = indexer 
+        
+                        curr_model = models[i]
+                        curr_proba = config.met_probs[i]
+                        met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
+                        curr_probs[indexer] .= met_probs[:]
+                        
+                        if i == config.num_models
+                            final_predictions = met_probs .> curr_proba 
+                        end 
+
+                        QC_scan(f, models[i], config, i, QC_mask, feature_mask) 
+                    catch e
+                        println("CURRENT FILE: $(file)")
+                        println(size(X))
+                        println(size(indxer))
+                        println(size(met_probs))
                     end 
+    
     
                 end 
     
@@ -2105,6 +2118,14 @@ module Ronin
     
     end 
     
+    """
+
+    Function that takes in a set of model parameters, trains a model on the entire dataset, and then
+    isolates gates that trees in the forest have trouble agreeing upon. More specifically, will isolate gates that 
+    have > `low_threshold` but < `high_threshold` fraction of trees in agreement that they are meteorological. It will 
+    subsequently train a random forest model specifically on these gates, saving it to `ambig_model.jld2`
+
+    """
     function multipass_uncertain(base_config::ModelConfig, low_threshold::Float64, high_threshold::Float64; 
         low_model_path = "low_config_model.jld2", high_model_path = "high_config_model.jld2", skip_training=false)
     
@@ -2120,12 +2141,7 @@ module Ronin
                                 verbose = base_config.verbose, REMOVE_LOW_NCP = base_config.REMOVE_LOW_NCP, REMOVE_HIGH_PGG = base_config.REMOVE_HIGH_PGG,
                                 HAS_INTERACTIVE_QC = base_config.HAS_INTERACTIVE_QC, QC_var = base_config.QC_var, remove_var = base_config.remove_var, 
                                 replace_missing = base_config.replace_missing, write_out = base_config.write_out, QC_mask = base_config.QC_mask, mask_name = base_config.mask_name)
-    
-        high_config = ModelConfig(num_models = 1, model_output_paths = [low_model_path], met_probs=[high_threshold], feature_output_paths = ["low_features.h5"],class_weights = base_config.class_weights,
-                                input_path = base_config.input_path, input_config=base_config.input_config, file_preprocessed = base_config.file_preprocessed, VARS_TO_QC = base_config.VARS_TO_QC,
-                                verbose = base_config.verbose, REMOVE_LOW_NCP = base_config.REMOVE_LOW_NCP, REMOVE_HIGH_PGG = base_config.REMOVE_HIGH_PGG,
-                                HAS_INTERACTIVE_QC = base_config.HAS_INTERACTIVE_QC, QC_var = base_config.QC_var, remove_var = base_config.remove_var, 
-                                replace_missing = base_config.replace_missing, write_out = base_config.write_out, QC_mask = base_config.QC_mask, mask_name = base_config.mask_name)
+
         if ! skip_training
             printstyled("PRINTING MODELS", color=:red)
             train_multi_model(low_config)
@@ -2133,9 +2149,8 @@ module Ronin
         
         print(low_config)
         
-    
-       
         low_predictions, low_verification, low_idxrs, gate_indexer = get_idxer(low_config, low_threshold, high_threshold)
+
         ##Get balanced class weights 
         targets_of_interest = low_verification[:][Vector{Bool}(gate_indexer)]
         class_weights = Vector{Float32}(fill(0,length(targets_of_interest)))
@@ -2157,7 +2172,7 @@ module Ronin
         print("TRAINING NEW MODEL") 
         train_model("low_features.h5", "ambig_model.jld2", row_subset = Vector{Bool}(gate_indexer[:]), class_weights = Vector{Float32}(class_weights))
     
-        predictions, verification = predict_with_model("ambig_model.jld2", "LOW_CONFIG_FEATURES.h5", probability_threshold = Float32(.5), row_subset = gate_indexer)
+        predictions, verification = predict_with_model("ambig_model.jld2", "low_features.h5", probability_threshold = Float32(.5), row_subset = gate_indexer)
         return((predictions, verification, gate_indexer))
     
     end 
