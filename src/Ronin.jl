@@ -27,6 +27,7 @@ module Ronin
     export QC_scan, get_QC_mask
     export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
     export train_multi_model, ModelConfig, composite_prediction, get_contingency, compute_balanced_class_weights
+    export multipass_uncertain
 
 
 
@@ -2093,5 +2094,73 @@ module Ronin
     
         return(DataFrame(col_names[1] => row_names, col_names[2] => true_met, col_names[3] => true_non))
     end 
+
+
+
+    function get_idxer(model_config::ModelConfig, low_threshold::Float64, high_threshold::Float64)
+
+        low_predictions, low_verification, low_idxrs, low_probs= composite_prediction(low_config, return_probs=true)
+        pred_idxer = Vector{Bool}((low_probs .> low_threshold) .& (low_probs .< high_threshold))
+        return(low_predictions, low_verification, low_idxrs, pred_idxer)
+    
+    end 
+    
+    function multipass_uncertain(base_config::ModelConfig, low_threshold::Float64, high_threshold::Float64; 
+        low_model_path = "low_config_model.jld2", high_model_path = "high_config_model.jld2", skip_training=false)
+    
+        ###Begin by training two models, one with a low threshold for meteorological retention, and one with a high threshold 
+        ###The gates retained in the low threshold have < (1-low_threshold) confidence, and the gates removed in the high_threshold 
+        ###have <= (high_threshold) confidence. This enables us to attack the potentially more ambiguous or uncertain gates 
+    
+        ###do NOT need to train two models, just predict using two different thresholds 
+    
+        low_config = ModelConfig(num_models = 1, model_output_paths = [low_model_path], met_probs=[low_threshold], feature_output_paths = ["low_features.h5"],
+                                input_path = base_config.input_path, input_config=base_config.input_config, file_preprocessed = base_config.file_preprocessed,
+                                class_weights = base_config.class_weights, VARS_TO_QC=base_config.VARS_TO_QC,
+                                verbose = base_config.verbose, REMOVE_LOW_NCP = base_config.REMOVE_LOW_NCP, REMOVE_HIGH_PGG = base_config.REMOVE_HIGH_PGG,
+                                HAS_INTERACTIVE_QC = base_config.HAS_INTERACTIVE_QC, QC_var = base_config.QC_var, remove_var = base_config.remove_var, 
+                                replace_missing = base_config.replace_missing, write_out = base_config.write_out, QC_mask = base_config.QC_mask, mask_name = base_config.mask_name)
+    
+        high_config = ModelConfig(num_models = 1, model_output_paths = [low_model_path], met_probs=[high_threshold], feature_output_paths = ["low_features.h5"],class_weights = base_config.class_weights,
+                                input_path = base_config.input_path, input_config=base_config.input_config, file_preprocessed = base_config.file_preprocessed, VARS_TO_QC = base_config.VARS_TO_QC,
+                                verbose = base_config.verbose, REMOVE_LOW_NCP = base_config.REMOVE_LOW_NCP, REMOVE_HIGH_PGG = base_config.REMOVE_HIGH_PGG,
+                                HAS_INTERACTIVE_QC = base_config.HAS_INTERACTIVE_QC, QC_var = base_config.QC_var, remove_var = base_config.remove_var, 
+                                replace_missing = base_config.replace_missing, write_out = base_config.write_out, QC_mask = base_config.QC_mask, mask_name = base_config.mask_name)
+        if ! skip_training
+            printstyled("PRINTING MODELS", color=:red)
+            train_multi_model(low_config)
+        end 
+        
+        print(low_config)
+        
+    
+       
+        low_predictions, low_verification, low_idxrs, gate_indexer = get_idxer(low_config, low_threshold, high_threshold)
+        ##Get balanced class weights 
+        targets_of_interest = low_verification[:][Vector{Bool}(gate_indexer)]
+        class_weights = Vector{Float32}(fill(0,length(targets_of_interest)))
+        weight_dict = compute_balanced_class_weights(targets_of_interest[:])
+        for class in keys(weight_dict)
+            class_weights[targets_of_interest[:] .== class] .= weight_dict[class]
+        end 
+    
+        printstyled("NUMBER OF GATES REMAINING: $(sum(gate_indexer))\n", color=:green)
+        @assert sum(gate_indexer) >0 
+    
+        ###Finally, train a model on only these uncertain gates 
+        println("TRAINING FINAL MODEL")
+        # printstyled("CLASS BALANCE...\n", color=:green)
+        # printstyled("NON MET GATES: $(sum(.! targets_of_interest)/ length(targets_of_interest))\n")
+        # printsytled("MET GATES:     $(sum(targets_of_interest)   / length(targets_of_interest))")
+        flush(stdout)
+        
+        print("TRAINING NEW MODEL") 
+        train_model("low_features.h5", "ambig_model.jld2", row_subset = Vector{Bool}(gate_indexer[:]), class_weights = Vector{Float32}(class_weights))
+    
+        predictions, verification = predict_with_model("ambig_model.jld2", "LOW_CONFIG_FEATURES.h5", probability_threshold = Float32(.5), row_subset = gate_indexer)
+        return((predictions, verification, gate_indexer))
+    
+    end 
+
     
 end 
