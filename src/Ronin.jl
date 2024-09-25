@@ -2159,14 +2159,14 @@ module Ronin
 
     function get_idxer(model_config::ModelConfig, low_threshold::Float64, high_threshold::Float64)
 
-        low_predictions, low_verification, low_idxrs, low_probs= composite_prediction(low_config, return_probs=true)
+        low_predictions, low_verification, low_idxrs, low_probs = composite_prediction(model_config, return_probs=true)
         pred_idxer = Vector{Bool}((low_probs .> low_threshold) .& (low_probs .< high_threshold))
         return(low_predictions, low_verification, low_idxrs, pred_idxer)
     
     end 
     
     """
-    
+
         multipass_uncertain(base_config::ModelConfig, low_threshold::Float64, high_threshold::Float64; 
         low_model_path::String = "low_config_model.jld2", skip_training_base=false)
 
@@ -2197,8 +2197,10 @@ module Ronin
         ###have <= (high_threshold) confidence. This enables us to attack the potentially more ambiguous or uncertain gates 
     
         ###do NOT need to train two models, just predict using two different thresholds 
+
+        feature_output_path = base_config.feature_output_paths[1]
     
-        low_config = ModelConfig(num_models = 1, model_output_paths = [low_model_path], met_probs=[low_threshold], feature_output_paths = ["low_features.h5"],
+        low_config = ModelConfig(num_models = 1, model_output_paths = [low_model_path], met_probs=[low_threshold], feature_output_paths = [feature_output_path],
                                 input_path = base_config.input_path, input_config=base_config.input_config, file_preprocessed = base_config.file_preprocessed,
                                 class_weights = base_config.class_weights, VARS_TO_QC=base_config.VARS_TO_QC,
                                 verbose = base_config.verbose, REMOVE_LOW_NCP = base_config.REMOVE_LOW_NCP, REMOVE_HIGH_PGG = base_config.REMOVE_HIGH_PGG,
@@ -2233,9 +2235,9 @@ module Ronin
         flush(stdout)
         
         print("TRAINING NEW MODEL") 
-        train_model("low_features.h5", "ambig_model.jld2", row_subset = Vector{Bool}(gate_indexer[:]), class_weights = Vector{Float32}(class_weights))
+        train_model(feature_output_path, "ambig_model.jld2", row_subset = Vector{Bool}(gate_indexer[:]), class_weights = Vector{Float32}(class_weights))
     
-        predictions, verification = predict_with_model("ambig_model.jld2", "low_features.h5", probability_threshold = Float32(.5), row_subset = gate_indexer)
+        predictions, verification = predict_with_model("ambig_model.jld2", feature_output_path, probability_threshold = Float32(.5), row_subset = gate_indexer)
         return((predictions, verification, gate_indexer))
     
     end 
