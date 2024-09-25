@@ -822,11 +822,21 @@ module Ronin
     ```julia
     verbose::Bool = false 
     ````
-    Whether to output timing and scan information 
+    Whether to output timing and scan information
+    
+    ```julia
+    output_probs::Bool = false
+    ```
+    Whether or not to output probabilities of meteorological gate from random forest 
+    ```julia
+    prob_varname::String = ""
+    ```
+    What to name the probability variable in the cfradial file 
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
                      QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Float64 = .5, output_mask::Bool = true,
-                     mask_name::String = "QC_MASK_2", verbose::Bool=false, REMOVE_HIGH_PGG::Bool = true, REMOVE_LOW_NCP::Bool = true)
+                     mask_name::String = "QC_MASK_2", verbose::Bool=false, REMOVE_HIGH_PGG::Bool = true, REMOVE_LOW_NCP::Bool = true, 
+                     output_probs::Bool = false, prob_varname::String = "")
 
         new_model = load_object(model_path) 
 
@@ -894,6 +904,7 @@ module Ronin
                         throw(e)
                     end 
                 end 
+
                 if verbose
                     println("\r\nPROCESSING: $(path)")
                     println("\r\nCompleted in $(time()-starttime ) seconds")
@@ -933,8 +944,39 @@ module Ronin
                     end 
                 end
             end 
+
+            if output_probs 
+
+                NEW = fill(-1, cfrad_dims)[:]
+                NEW[indexer] = met_predictions
+                NEW = reshape(NEW, cfrad_dims)
+
+                try
+                    if verbose 
+                        println("Writing Probabilites to $(prob_varname)")
+                    end 
+
+                    NEW_FIELD_ATTRS = Dict(
+                    "units" => "Unitless",
+                    "long_name" => "Ronin Decision Tree Probabilities"
+                    )   
+                    defVar(input_cfrad, prob_varname, MASK, ("range", "time"), fillvalue=-1; attrib=NEW_FIELD_ATTRS)
+                catch e
+
+                ###Simply overwrite the variable 
+                    if e.msg == "NetCDF: String match to name in use"
+                        if verbose 
+                            println("Already exists... overwriting") 
+                        end 
+                        input_cfrad[prob_varname][:,:] =  MASK 
+                    else 
+                        throw(e)
+                    end 
+                end
             
             close(input_cfrad)
+
+            end 
 
         end 
     end 
@@ -1770,6 +1812,7 @@ module Ronin
                 
     end 
 
+
     function QC_scan(input_set::NCDataset, new_model, config::ModelConfig, iter::Int64, QC_mask::Bool, feature_mask::Matrix{Bool}; 
                         output_probs::Bool = false, prob_name::String = "")
             
@@ -1871,7 +1914,22 @@ module Ronin
                 
     end     
 
-    function QC_scan(config::ModelConfig; output_probs = false, prob_name::String = "")
+
+    """
+    Version of QC_Scan used for multiple-pass models. 
+    Required argument is a model configuration object.
+    Optional arguments: 
+    ```julia
+    output_probs::Bool = false 
+    ```
+    Whether or not to write the modeled probabilities to file 
+
+    ```julia
+    prob_name::String 
+    ```
+    What to name the probability variable to file 
+    """
+    function QC_scan(config::ModelConfig; output_probs::Bool = false, prob_name::String = "")
 
         @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
     
@@ -2108,15 +2166,31 @@ module Ronin
     end 
     
     """
+    
+        multipass_uncertain(base_config::ModelConfig, low_threshold::Float64, high_threshold::Float64; 
+        low_model_path::String = "low_config_model.jld2", skip_training_base=false)
 
     Function that takes in a set of model parameters, trains a model on the entire dataset, and then
     isolates gates that trees in the forest have trouble agreeing upon. More specifically, will isolate gates that 
     have > `low_threshold` but < `high_threshold` fraction of trees in agreement that they are meteorological. It will 
     subsequently train a random forest model specifically on these gates, saving it to `ambig_model.jld2`
 
+    ##Required Arguments 
+    * `base_config::ModelConfig` Model configuration object that contains information about input data and where to write models to 
+    * `low_threshold::Float64` Used for selecting ambiguous gates, the minimum fraction of trees that must agree for a datapoint to be considered 
+    * `high_threshold::Float64` Used for selecting ambiguous gates, the maximum fraction of trees that may classify a gate as meteorological for it to be considered
+    ##Optional Arguments 
+    * `low_model_path::String="low_config_model.jld2"`` Where to output the base model (trained on all gates) to
+    * `ambig_model_path::String="ambig_model.jld2"` Where to output model trained on difficult gates to 
+    * `skip_training_base::Bool=false` If base model has already been trained, set to `true` to skip retraining 
+
+    ##Returns
+    Will return 3 items: A vector of predictions, a vector of verification data, and an indexer vector which can be used 
+    to determine which gates fall between the low_threshold and high_threshold in the basic model 
+
     """
     function multipass_uncertain(base_config::ModelConfig, low_threshold::Float64, high_threshold::Float64; 
-        low_model_path = "low_config_model.jld2", high_model_path = "high_config_model.jld2", skip_training=false)
+        low_model_path::String = "low_config_model.jld2", skip_training_base=false)
     
         ###Begin by training two models, one with a low threshold for meteorological retention, and one with a high threshold 
         ###The gates retained in the low threshold have < (1-low_threshold) confidence, and the gates removed in the high_threshold 
@@ -2131,7 +2205,7 @@ module Ronin
                                 HAS_INTERACTIVE_QC = base_config.HAS_INTERACTIVE_QC, QC_var = base_config.QC_var, remove_var = base_config.remove_var, 
                                 replace_missing = base_config.replace_missing, write_out = base_config.write_out, QC_mask = base_config.QC_mask, mask_name = base_config.mask_name)
 
-        if ! skip_training
+        if ! skip_training_base
             printstyled("PRINTING MODELS", color=:red)
             train_multi_model(low_config)
         end 

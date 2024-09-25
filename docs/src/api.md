@@ -30,7 +30,8 @@ error_characteristics(::String, ::String, ::String)
 ```@docs 
 ModelConfig
 train_multi_model
-composite_prediction 
+composite_prediction
+multipass_uncertain
 ```
 
 ## Non-user facing
