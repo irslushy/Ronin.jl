@@ -729,6 +729,11 @@ module Ronin
     Results will be written in the h5 format with the name "Predicitions" and "Ground Truth" 
 
     ```julia
+    probability_threshold::Float32 = .5
+    ```
+    Minimum fraction of trees classifying a gate as meteorological for it to be assigned a label of meteorological
+
+    ```julia
     row_subset=:
     ```
     Selection of rows to predict upon 
@@ -2175,22 +2180,24 @@ module Ronin
     have > `low_threshold` but < `high_threshold` fraction of trees in agreement that they are meteorological. It will 
     subsequently train a random forest model specifically on these gates, saving it to `ambig_model.jld2`
 
-    ##Required Arguments 
+    ## Required Arguments 
     * `base_config::ModelConfig` Model configuration object that contains information about input data and where to write models to 
     * `low_threshold::Float64` Used for selecting ambiguous gates, the minimum fraction of trees that must agree for a datapoint to be considered 
     * `high_threshold::Float64` Used for selecting ambiguous gates, the maximum fraction of trees that may classify a gate as meteorological for it to be considered
-    ##Optional Arguments 
+    ## Optional Arguments 
     * `low_model_path::String="low_config_model.jld2"`` Where to output the base model (trained on all gates) to
     * `ambig_model_path::String="ambig_model.jld2"` Where to output model trained on difficult gates to 
     * `skip_training_base::Bool=false` If base model has already been trained, set to `true` to skip retraining 
+    * `mode::String = "train"` Options are "train" or "predict". If mode == "predict", will not do any model training
 
-    ##Returns
+    ## Returns
     Will return 3 items: A vector of predictions, a vector of verification data, and an indexer vector which can be used 
-    to determine which gates fall between the low_threshold and high_threshold in the basic model 
+    to determine which gates fall between the low_threshold and high_threshold in the basic model. The prediction vector is a combination 
+    of classifications from the model trained on the base set and the model trained on the difficult gates. 
 
     """
     function multipass_uncertain(base_config::ModelConfig, low_threshold::Float64, high_threshold::Float64; 
-        low_model_path::String = "low_config_model.jld2", skip_training_base=false)
+        low_model_path::String = "low_config_model.jld2", skip_training_base::Bool=false, mode::String="train")
     
         ###Begin by training two models, one with a low threshold for meteorological retention, and one with a high threshold 
         ###The gates retained in the low threshold have < (1-low_threshold) confidence, and the gates removed in the high_threshold 
@@ -2235,8 +2242,11 @@ module Ronin
         flush(stdout)
         
         print("TRAINING NEW MODEL") 
-        train_model(feature_output_path, "ambig_model.jld2", row_subset = Vector{Bool}(gate_indexer[:]), class_weights = Vector{Float32}(class_weights))
-    
+
+        if mode == "train"
+            train_model(feature_output_path, "ambig_model.jld2", row_subset = Vector{Bool}(gate_indexer[:]), class_weights = Vector{Float32}(class_weights))
+        end 
+
         predictions, verification = predict_with_model("ambig_model.jld2", feature_output_path, probability_threshold = Float32(.5), row_subset = gate_indexer)
         return((predictions, verification, gate_indexer))
     
