@@ -319,7 +319,7 @@ module Ronin
     
         for (i, path) in enumerate(paths) 
             dims = (0,0) 
-
+            newIdx = Matrix{}(undef, 0,0)
             try 
                 cfrad = Dataset(path) 
                 pathstarttime=time() 
@@ -513,6 +513,7 @@ module Ronin
     
         for (i, path) in enumerate(paths) 
             dims = (0,0) 
+            indexer = Matrix{}(undef, 0,0)
             try 
                 cfrad = Dataset(path) 
                 pathstarttime=time() 
