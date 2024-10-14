@@ -27,7 +27,7 @@ module Ronin
     export QC_scan, get_QC_mask
     export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
     export train_multi_model, ModelConfig, composite_prediction, get_contingency, compute_balanced_class_weights
-    export multipass_uncertain
+    export multipass_uncertain, write_field 
 
 
 
@@ -46,10 +46,11 @@ module Ronin
     Vector containing paths to each model in the model chain. Should be same length as the number of models 
 
     ```julia
-    met_probs::Vector{Float64}
+    met_probs::Vector{Tuple{Float64,Float64}}
     ```
-    Vector containing the decision threshold for a gate to be considered meteorological in each model in the chain. Example, if set to .9, 
-        >= 90% of trees in the random forest must assign a gate a label of meteorological for it to be considered meteorological. 
+    Vector containing the decision range for a gate to be considered meteorological in each model in the chain. Example, if set to (.9, 1), 
+        > 90% of trees in the random forest must assign a gate a label of meteorological for it to be considered meteorological. 
+        The range is exclusive on the lower end and inclusive on the high end. Form is (low_threshold, high_threshold)
 
     ```julia
     feature_output_paths::Vector{String}
@@ -154,7 +155,7 @@ module Ronin
 
         num_models::Int64
         model_output_paths::Vector{String}
-        met_probs::Vector{Float64} 
+        met_probs::Vector{Tuple{Float64, Float64}} 
 
         feature_output_paths::Vector{String} 
         
@@ -275,10 +276,15 @@ module Ronin
     write_out::Bool=true
     ```
     Whether or not to write features out to file 
+
+    ```julia
+    return_idxer::Bool = false
+    ```
+    If true, will return IDXER, where IDXER is a 
     """
     function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_INTERACTIVE_QC::Bool; 
         verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false, QC_variable::String = "VG", remove_variable::String = "VV", 
-        replace_missing::Bool = false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String = "")
+        replace_missing::Bool = false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String = "", return_idxer::Bool=false)
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -306,17 +312,21 @@ module Ronin
     
         newX = X = Matrix{Float64}(undef,0,output_cols)
         newY = Y = Matrix{Int64}(undef, 0,1) 
-        newIdx = index = Matrix{Bool}(undef,0,1)
+        idxs = Vector{}(undef,0)
 
         
         starttime = time() 
     
         for (i, path) in enumerate(paths) 
+            dims = (0,0) 
+
             try 
                 cfrad = Dataset(path) 
                 pathstarttime=time() 
+                dims = (cfrad.dim["range"], cfrad.dim["time"])
 
                 if QC_mask
+                    ###We wish to calculate features on where the mask is NON MISSING 
                     currmask = Matrix{Bool}(.! map(ismissing, cfrad[mask_name][:,:]))
                     (newX, newY, newIdx) = process_single_file(cfrad, argument_file; 
                                                 HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
@@ -350,8 +360,8 @@ module Ronin
 
             X = vcat(X, newX)::Matrix{Float64}
             Y = vcat(Y, newY)::Matrix{Int64}
-            index = vcat(index, newIdx)::Matrix{Bool}
-
+            newIdx = reshape(newIdx, dims)
+            push!(idxs, newIdx)
         end 
     
         println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 2)) SECONDS")
@@ -368,10 +378,18 @@ module Ronin
             write_dataset(fid, "X", X)
             write_dataset(fid, "Y", Y)
             close(fid)
-            return X, Y
+            if return_idxer
+                return X, Y, idxs
+            else 
+                return X, Y
+            end 
         else
             close(fid)
-            return X, Y
+            if return_idxer
+                return X, Y, idxs
+            else 
+                return X, Y
+            end 
         end 
 
     end 
@@ -461,7 +479,7 @@ module Ronin
     function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
         ,output_file::String, HAS_INTERACTIVE_QC::Bool; verbose::Bool=false,
          REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable::String = "VG", remove_variable::String = "VV", 
-         replace_missing::Bool=false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String="")
+         replace_missing::Bool=false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String="", return_idxer::Bool =false)
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -489,14 +507,16 @@ module Ronin
     
         newX = X = Matrix{Float64}(undef,0,output_cols)
         newY = Y = Matrix{Int64}(undef, 0,1) 
-        
+        idxs = Vector{}(undef,0)
+
         starttime = time() 
     
         for (i, path) in enumerate(paths) 
+            dims = (0,0) 
             try 
                 cfrad = Dataset(path) 
                 pathstarttime=time() 
-
+                dims = (cfrad.dim["range"], cfrad.dim["time"])
 
                 if QC_mask
 
@@ -534,7 +554,8 @@ module Ronin
 
             X = vcat(X, newX)::Matrix{Float64}
             Y = vcat(Y, newY)::Matrix{Int64}
-
+            newIdx = reshape(newIdx, dims)
+            push!(idxs, newIdx)
         end 
     
         println("COMPLETED PROCESSING $(length(paths)) FILES IN $(round((time() - starttime), digits = 2)) SECONDS")
@@ -551,9 +572,18 @@ module Ronin
             write_dataset(fid, "X", X)
             write_dataset(fid, "Y", Y)
             close(fid)
+            if return_idxer
+                return X, Y, idxs
+            else 
+                return X, Y
+            end 
         else
             close(fid)
-            return X, Y
+            if return_idxer
+                return X, Y, idxs
+            else 
+                return X, Y
+            end 
         end 
 
     end 
@@ -839,7 +869,7 @@ module Ronin
     What to name the probability variable in the cfradial file 
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
-                     QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Float64 = .5, output_mask::Bool = true,
+                     QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Tuple{Float64, Float64} = (.5, 1), output_mask::Bool = true,
                      mask_name::String = "QC_MASK_2", verbose::Bool=false, REMOVE_HIGH_PGG::Bool = true, REMOVE_LOW_NCP::Bool = true, 
                      output_probs::Bool = false, prob_varname::String = "")
 
@@ -866,7 +896,8 @@ module Ronin
             ##assume that default SYMBOL for saved model is savedmodel
             ##For binary classifications, 1 will be at index 2 in the predictions matrix 
             met_predictions = DecisionTree.predict_proba(new_model, X)[:, 2]
-            predictions = met_predictions .> decision_threshold
+            predictions = (met_predictions .> decision_threshold[1]) .& (met_predictions .<= decision_threshold[2])
+            printstyled("RETAINING GATES BETWEEN $(decision_threshold[1]) and $(decision_threshold[2]) PROBABILITY \n ", color=:yellow)
 
             ##QC each variable in VARIALBES_TO_QC
             for var in VARIABLES_TO_QC
@@ -879,7 +910,8 @@ module Ronin
 
                 NEW_FIELD_ATTRS = Dict(
                     "units" => input_cfrad[var].attrib["units"],
-                    "long_name" => "Random Forest Model QC'ed $(var) field"
+                    "long_name" => "Random Forest Model QC'ed $(var) field",
+                    "probabilities" => " $(decision_threshold[1]) < p <= $(decision_threshold[2])"
                 )
 
                 ##Set MISSINGS to fill value in current field
@@ -1834,7 +1866,7 @@ module Ronin
         
         VARIABLES_TO_QC = config.VARS_TO_QC
         met_predictions = DecisionTree.predict_proba(new_model, features)[:, 2]
-        predictions = met_predictions .> decision_threshold
+        predictions = (met_predictions .> decision_threshold[1]) .& (met_predictions .<= decision_threshold[2])
         
         if output_probs
 
@@ -2041,7 +2073,7 @@ module Ronin
         for file in files
             
                 ###Get dimensions 
-            scan_dims = NCDataset(files[1]) do f
+            scan_dims = NCDataset(file) do f
                 (dimsize(f["range"]).range, dimsize(f["time"]).time)
             end 
         
@@ -2085,7 +2117,7 @@ module Ronin
                     curr_probs[indexer] .= met_probs[:]
                     
                     if i == config.num_models
-                        final_predictions = met_probs .> curr_proba 
+                        final_predictions = (met_probs .> curr_proba[1]) .& (met_probs .<= curr_proba[2])
                     end 
 
                     QC_scan(f, models[i], config, i, QC_mask, feature_mask) 
@@ -2250,6 +2282,37 @@ module Ronin
         predictions, verification = predict_with_model("ambig_model.jld2", feature_output_path, probability_threshold = Float32(.5), row_subset = gate_indexer)
         return((predictions, verification, gate_indexer))
     
+    end 
+
+    """
+        write_field(filepath::String, fieldname::String, NEW_FIELD, overwrite::Bool = true, attribs::Dict = Dict(), dim_names::Tuple = ("range", "time"), verbose::Bool=true)
+        Helper function to write/overwrite a 2D field to a netCDF file 
+        ## Required arguments 
+        * `filepath::String` Name of netCDF file to write data to 
+        * `fieldname::String` What to call the data in the netCDF 
+        * `NEW_FIELD` Data dimensioned by `dim_names` to write to netCDF 
+
+    """
+    function write_field(filepath::String, fieldname::String, NEW_FIELD, overwrite::Bool = true, attribs::Dict = Dict(), dim_names::Tuple=("range", "time"), verbose::Bool=true)
+        
+        NCDataset(filepath, "a") do input_set 
+            try 
+                defVar(input_set, fieldname, NEW_FIELD, dim_names, fillvalue = FILL_VAL; attrib=attribs)
+            catch e
+                print("INPUT_SET $(typeof(input_set)), VAR: $(typeof(fieldname))")
+                ###Simply overwrite the variable 
+                if e.msg == "NetCDF: String match to name in use" && (overwrite)
+                    if verbose
+                        println("Already exists... overwriting") 
+                    end 
+                    input_set[fieldname][:,:] = NEW_FIELD 
+                else 
+                    throw(e)
+                end 
+            end 
+
+        end 
+
     end 
 
     

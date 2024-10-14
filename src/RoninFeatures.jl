@@ -107,6 +107,7 @@ function calc_iso(var::AbstractMatrix{Union{Missing, Float64}};
     window::Matrix{Union{Missing, Float64}} = iso_window)
 
     missings = map((x) -> Float64(ismissing(x)), var)
+
     iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window) 
 end
 
@@ -114,11 +115,6 @@ end
 ###These actually don't necessarily need to be functions of their own, could just move them to
 ###Calls to _weighted_func 
 function calc_iso(var::AbstractMatrix{Union{Missing, Float32}}; weights = iso_weights, window = iso_window)
-
-    if size(weights) != window
-        error("Weight matrix does not equal window size")
-    end
-
     missings = map((x) -> Float64(ismissing(x)), var)
     iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window) 
 end
@@ -173,7 +169,6 @@ end
 
 ##Calculate the windowed standard deviation of a given variablevariable 
 function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_weights, window = std_window)
-
     mapwindow((x) -> _weighted_func(x, weights, missing_std), var, window, border=Fill(missing))
 end 
 
@@ -182,27 +177,26 @@ function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_win
     global REPLACE_MISSING_WITH_FILL
 
     if ( REPLACE_MISSING_WITH_FILL)
-        var[map(ismissing, var)] .= FILL_VAL
+        @inbounds var[map(ismissing, var)] .= FILL_VAL
     end 
 
-    mapwindow((x) -> _weighted_func(x, weights, missing_std), var, window, border=Fill(missing))
+    @inbounds mapwindow((x) -> _weighted_func(x, weights, missing_std), var, window, border=Fill(missing))
 end 
 
 function calc_avg(var::Matrix{Union{Missing, Float32}}; weights = avg_weights, window = avg_window)
 
     if ( REPLACE_MISSING_WITH_FILL)
-        var[map(ismissing, var)] .= FILL_VAL
+        @inbounds var[map(ismissing, var)] .= FILL_VAL
     end 
 
-    mapwindow((x) -> _weighted_func(x, weights, missing_avg), var, window, border=Fill(missing))
+    @inbounds mapwindow((x) -> _weighted_func(x, weights, missing_avg), var, window, border=Fill(missing))
 end
 
 function calc_avg(var::Matrix{}; weights = avg_weights, window = avg_window)
 
     if (REPLACE_MISSING_WITH_FILL)
-        var[map(ismissing, var)] .= FILL_VAL
+        @inbounds var[map(ismissing, var)] .= FILL_VAL
     end 
-
 
     @inbounds mapwindow((x) -> _weighted_func(x, weights, missing_avg), var, window, border=Fill(missing))
 end
