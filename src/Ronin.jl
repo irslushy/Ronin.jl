@@ -554,7 +554,7 @@ module Ronin
 
             X = vcat(X, newX)::Matrix{Float64}
             Y = vcat(Y, newY)::Matrix{Int64}
-            newIdx = reshape(newIdx, dims)
+            newIdx = reshape(indexer, dims)
             push!(idxs, newIdx)
         end 
     
