@@ -157,7 +157,16 @@ end
 printstyled("QC_SCAN AVERAGE TIME FOR 10 SCANS: $(mean(times)) seonds \n", color=:green)
 
 
+###Ensure that weight matrix version of calculations are consistent between calculate feature versions 
+X, Y, idxer = Ronin.process_single_file(currset, "micro_tasks.txt", HAS_INTERACTIVE_QC=true, REMOVE_HIGH_PGG=true, REMOVE_LOW_NCP=true, 
+            QC_variable="VG", remove_variable="VV", weight_matrixes=smol_weights)
 
+X2, Y2, idxer2 = Ronin.process_single_file(currset, ["ISO(VV)", "ISO(VV)"], smol_weights, HAS_INTERACTIVE_QC=true, REMOVE_HIGH_PGG=true, REMOVE_LOW_NCP=true, 
+                    QC_variable="VG", remove_variable="VV")
+
+@assert X2 == X
+@assert Y == Y2 
+@assert X[:, 1] != X[:, 2]
 
 
 
