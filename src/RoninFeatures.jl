@@ -557,6 +557,7 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
     
     starttime=time()
 
+    ###Do we need a check for where stuff is equal fill val here? 
     if (REMOVE_LOW_NCP)
         ###Remove data that does not equal or exceed minimum NCP threshold 
         ###Only need to do this for indicies that are true in INDEXER, as this is only remaining valid data
@@ -613,8 +614,8 @@ end
 ###In this case will also pass the tasks to complete as a vector 
 ###weight_matrixes are also implicitly the window size 
 function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}; 
-    HAS_INTERACTIVE_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable = "VG", remove_variable = "VV", remove_missing=true,
-    replace_missing = false,mask_features=false, feature_mask::Matrix{Bool} = [true true ; false false])
+    HAS_INTERACTIVE_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable::String = "VG", remove_variable::String = "VV",
+    replace_missing::Bool = false, mask_features::Bool=false, feature_mask::Matrix{Bool} = [true true ; false false])
 
 
     global REPLACE_MISSING_WITH_FILL
@@ -624,7 +625,9 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
     else 
         global REPLACE_MISSING_WITH_FILL = false 
     end 
-    
+
+    valid_vars = keys(cfrad)
+
     ###Features array 
     X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
 
@@ -715,20 +718,21 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
     #println("REMOVING MISSING DATA BASED ON $(remove_variable)...")
     starttime = time() 
 
-    if (remove_missing)
-        VT = cfrad[remove_variable][:]
-        INDEXER = [ismissing(x) ? false : true for x in VT]
-    else
-        INDEXER = fill(true, length(cfrad[remove_variable][:]))
-    end 
+    VT = cfrad[remove_variable][:]
+    INDEXER = [ismissing(x) for x in VT]
     
+    ###After this, INDEXER will contain a value of TRUE if the gate is NON-MISSING and VALID in the feature mask, 
+    ###FALSE otherwise 
     if mask_features 
         INDEXER = [INDEXER[i] ? false : maskval for (i, maskval) in enumerate(feature_mask[:]) ]
+    else 
+        INDEXER = .! INDEXER 
     end 
     
     starttime=time()
 
     if (REMOVE_LOW_NCP)
+        ##Calculate NCP and set values that are below the threshold to invalid in the indexer 
         if (NCP_Completed_Flag) 
             INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
         else 
@@ -738,12 +742,12 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
     end
 
     if (REMOVE_HIGH_PGG)
-        
+        ##Calculate PGG and set values that are above the threshold to invalid 
         if (PGG_Completed_Flag)
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
         else
             PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
-            INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
+            INDEXER[INDEXER] = [((x >= PGG_THRESHOLD) .& (x != FILL_VAL)) ? false : true for x in PGG[INDEXER]]
         end
 
     end
@@ -767,7 +771,6 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
 
         return(X, Y, INDEXER)
     else
-
         return(X, false, INDEXER)
     end 
 end 

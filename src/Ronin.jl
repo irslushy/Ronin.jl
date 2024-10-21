@@ -1731,6 +1731,9 @@ module Ronin
 
             ##Apply QC so that it will propagate to next pass of model 
             ##The variable being QC'ed here will be the raw variable as specified by the user 
+
+            curr_model = load_object(model_path) 
+ 
             QC_scan(config.input_path, config.input_config, model_path;
                     VARIABLES_TO_QC = [config.remove_var], QC_suffix = config.QC_SUFFIX,
                     indexer_var = config.remove_var, decision_threshold = config.met_probs[i], 
@@ -1894,7 +1897,6 @@ module Ronin
 
             end 
 
-
         end 
         ##QC each variable in VARIALBES_TO_QC
         for var in VARIABLES_TO_QC
@@ -1922,7 +1924,6 @@ module Ronin
             NEW_FIELD = NEW_FIELD[:]
             NEW_FIELD[indexer] = QCED_FIELDS
             NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
-    
     
             try 
                 defVar(input_set, var * config.QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
@@ -2123,8 +2124,6 @@ module Ronin
 
                     QC_scan(f, models[i], config, i, QC_mask, feature_mask) 
                 
-    
-    
                 end 
     
     
@@ -2162,6 +2161,7 @@ module Ronin
                 #write_dataset(f, "Scan_indexers", init_idxers)
             end
         end 
+
         if return_probs
             return(predictions, values, init_idxers, total_met_probs)
         else 
@@ -2315,6 +2315,107 @@ module Ronin
         end 
 
     end 
+
+    function QC_scan(input_set::NCDataset, new_model, config::ModelConfig, iter::Int64, QC_mask::Bool, feature_mask::Matrix{Bool}; 
+        output_probs::Bool = false, prob_name::String = "")
+
+        starttime=time() 
+
+        features, Y, indexer = process_single_file(input_set, config.input_config, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
+        , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
+        QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
+        mask_features = QC_mask, feature_mask = feature_mask) 
+
+
+        decision_threshold = config.met_probs[iter] 
+        cfrad_dims = (input_set.dim["range"], input_set.dim["time"])
+
+        VARIABLES_TO_QC = config.VARS_TO_QC
+        met_predictions = DecisionTree.predict_proba(new_model, features)[:, 2]
+        predictions = (met_predictions .> decision_threshold[1]) .& (met_predictions .<= decision_threshold[2])
+
+        if output_probs
+
+            if haskey(input_set, prob_name)
+
+                NEW_FIELD = missings(Float64, cfrad_dims)[:]
+                NEW_FIELD[indexer] = met_predictions
+                NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
+                idxer_2d = reshape(indexer, cfrad_dims)
+                input_set[prob_name][idxer_2d] .= predictions 
+
+            else
+                NEW_FIELD = missings(Float64, cfrad_dims)[:]
+                NEW_FIELD[indexer] = met_predictions
+                NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
+
+                NEW_FIELD_ATTRS = Dict(
+                "units" => "Fraction of Decision Trees",
+                "long_name" => "Probability of meteorological gate represented as fraction of       
+                                Decision Trees classifying it as meteorological."
+                )
+
+            defVar(input_set, prob_name, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
+
+            end 
+
+        end 
+        ##QC each variable in VARIALBES_TO_QC
+        for var in VARIABLES_TO_QC
+
+            ##Create new field to reshape QCed field to 
+            NEW_FIELD = missings(Float64, cfrad_dims) 
+            ##Only modify relevant data based on indexer, everything else should be fill value 
+            QCED_FIELDS = input_set[var][:][indexer]
+
+            NEW_FIELD_ATTRS = Dict(
+            "units" => input_set[var].attrib["units"],
+            "long_name" => "Random Forest Model QC'ed $(var) field"
+            )
+
+            ##Set MISSINGS to fill value in current field
+
+            initial_count = count(.!map(ismissing, QCED_FIELDS))
+            ##Apply predictions from model 
+            ##If model predicts 1, this indicates a prediction of meteorological data 
+            QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : missing, enumerate(QCED_FIELDS))
+            final_count = count(.!map(ismissing, QCED_FIELDS))
+
+
+            ###Need to reconstruct original 
+            NEW_FIELD = NEW_FIELD[:]
+            NEW_FIELD[indexer] = QCED_FIELDS
+            NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
+
+            try 
+                    defVar(input_set, var * config.QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
+            catch e
+                print("INPUT_SET $(typeof(input_set)), VAR: $(typeof(var))")
+                ###Simply overwrite the variable 
+                if e.msg == "NetCDF: String match to name in use"
+                    if config.verbose
+                        println("Already exists... overwriting") 
+                    end 
+                    input_set[var*config.QC_SUFFIX][:,:] = NEW_FIELD 
+                else 
+                    throw(e)
+                end 
+            end 
+
+            if config.verbose
+                println("\r\nCompleted in $(time()-starttime ) seconds")
+                println()
+                printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
+                println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
+            end 
+
+        end 
+
+        close(input_set) 
+
+    end     
+
+
 
     
 end 
