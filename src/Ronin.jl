@@ -870,7 +870,7 @@ module Ronin
     What to name the probability variable in the cfradial file 
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
-                     QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Tuple{Float64, Float64} = (.5, 1), output_mask::Bool = true,
+                     QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Tuple{Float64, Float64} = (.5, 1.), output_mask::Bool = true,
                      mask_name::String = "QC_MASK_2", verbose::Bool=false, REMOVE_HIGH_PGG::Bool = true, REMOVE_LOW_NCP::Bool = true, 
                      output_probs::Bool = false, prob_varname::String = "")
 
