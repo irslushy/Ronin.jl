@@ -152,7 +152,7 @@ Some important data convetions to make note of:
     * Normalized Coherent Power/Signal Quality Index: **NCP**
 * **NOAA TDR** scan variable names: 
     * Raw Velocity: **VEL**
-    * QC'ed Velocity (Used for ground truth): **VG**
+    * QC'ed Velocity (Used for ground truth): **VE**
     * Raw Reflectivity: **DBZ**
-    * QC'ed Reflectivity (Used for ground truth): **ZZ**
+    * QC'ed Reflectivity (Used for ground truth): **DZ**
     * Normalized Coherent Power/Signal Quality Index: **SQI**
