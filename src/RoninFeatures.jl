@@ -104,10 +104,11 @@ end
 
 function calc_iso(var::AbstractMatrix{Union{Missing, Float64}};
     weights::Matrix{Union{Missing, Float64}} = iso_weights, 
-    window::Matrix{Union{Missing, Float64}} = iso_window)
+    window = iso_window)
 
+    ###Where is missing? 
     missings = map((x) -> Float64(ismissing(x)), var)
-
+    ###Calculate sum of missing gates in the windowed area for each gate in scan 
     iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window) 
 end
 
@@ -435,7 +436,8 @@ For spatial parameters, whether or not to replace `missings` values with `FILL_V
 function process_single_file(cfrad::NCDataset, argfile_path::String; 
     HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
      QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false,
-    mask_features::Bool = false, feature_mask::Matrix{Bool} = [true true ; false false;])
+    mask_features::Bool = false, feature_mask::Matrix{Bool} = [true true ; false false;], 
+        weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}= [Matrix{Union{Missing, Float64}}(undef, 0,0)])
 
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
     #println("\r\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
@@ -458,7 +460,8 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
 
     PGG_Completed_Flag = false 
     NCP_Completed_Flag = false 
-
+    add_weight_matrix = (weight_matrixes != [Matrix{Union{Missing, Float64}}(undef, 0,0)]) & (length(weight_matrixes) == length(tasks))
+    
     for (i, task) in enumerate(tasks)
 
         ###Test to see if task involves a spatial parameter function call) 
@@ -484,13 +487,26 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
             var = regex_match[2]
             
             
+            if add_weight_matrix
+                weight_matrix = weight_matrixes[i] 
+                window_size = size(weight_matrix)
+            else 
+                currname = Symbol(lowercase(regex_match[1]) * "_weights")
+                weight_matrix = @eval($currname)
+                window_size = size(weight_matrix)
+            end 
+
+
             if mask_features
                 currdat = cfrad[var][:,:]
-                currdat[feature_mask] .= missing 
+                ##Set invalid data to missing for spatial parameter calculations. This way, they 
+                ##will be ignored. 
+                currdat[.! feature_mask] .= missing 
                 raw = @eval $func($currdat)[:]
             else 
-                raw = @eval $func($cfrad[$var][:,:])[:]
+                raw = @eval $func($cfrad[$var][:,:]; weights=$weight_matrix, window = $window_size )[:]
             end 
+
             filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
         
             any(isnan, filled) ? throw("NAN ERROR") : 
@@ -498,7 +514,9 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
             X[:, i] = filled[:]
             calc_length = time() - startTime
 
-
+        ###For any of the other tasks, we don't need to mask the features beforehand because 
+        ###They do not have any spatial dependence on missing gates - they are only a gatewise function 
+        ###IF a new function is implemented that DOES have spatial context, that will need to be changed
         elseif (task in valid_derived_params)
 
             startTime = time() 
@@ -529,11 +547,11 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
 
 
     ###Uses INDEXER to remove data not meeting basic quality thresholds
-    ###A value of 0 in INDEXER will remove the data from training/evaluation 
+    ###A value of 0/False in INDEXER will remove the data from training/evaluation 
     ###by the subsequent random forest model 
 
     ###Begin by simply removing the gates where no velocity is found 
-    #println("REMOVING MISSING DATA BASED ON $(remove_variable)...")
+
     starttime = time() 
 
     VT = cfrad[remove_variable][:]
@@ -667,7 +685,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
            
             if mask_features
                 currdat = cfrad[var][:,:]
-                currdat[feature_mask] .= missing 
+                currdat[.! feature_mask] .= missing 
                 raw = @eval $func($currdat)[:]
             else 
                 raw = @eval $func($cfrad[$var][:,:]; weights = $weight_matrix, window = $window_size)[:]
