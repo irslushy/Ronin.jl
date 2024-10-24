@@ -357,7 +357,6 @@ module Ronin
                     printstyled(Base.stderr, "POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)\n"; color=:red)
                 else 
                     printstyled(Base.stderr, "UNRECOVERABLE ERROR\n"; color=:red)
-                    close(fid)
                     throw(e)
     
                 ##@TODO CATCH exception handling for invalid task 
@@ -1043,6 +1042,8 @@ module Ronin
     softlinking each file to the training and testing directories. Attempts to avoid temporal autocorrelation while maximizing 
     variance by dividing each case into several different training/testing sections. 
 
+    An important note: Always use absolute paths, relative paths will cause issues with the simlinks 
+
     # Required Arguments: 
 
     ```julia
@@ -1183,7 +1184,7 @@ module Ronin
 
             printstyled("\nTotal length of case files: $(num_cfrads)\n", color=:red)
             printstyled("Length of testing files: $(length(testing_files)) - $( (length(testing_files) / (num_cfrads)) ) percent\n" , color=:blue)
-            printstyled("Length of testing_files: $(length(training_files)) - $( (length(training_files) / (num_cfrads)) ) percent\n", color=:blue)
+            printstyled("Length of training files: $(length(training_files)) - $( (length(training_files) / (num_cfrads)) ) percent\n", color=:blue)
 
             @assert (length(testing_files) + length(training_files) == num_cfrads)
             
@@ -1777,7 +1778,8 @@ module Ronin
                         (f.dim["range"], f.dim["time"])
                     end 
                     
-                    X, Y, idxer = calculate_features(config.input_path, config.task_path, out, true; 
+                    ###NEED to update this if it's beyond two pass so we can pass it the correct mask
+                    X, Y, idxer = calculate_features(path, config.task_path, out, true; 
                                         verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
                                         REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
                                         remove_variable = config.remove_var, replace_missing = config.replace_missing, return_idxer=true,
@@ -2171,10 +2173,10 @@ module Ronin
                 ###TO MOVE OUTSIDE LOOP 
                 ###We don't need to write these out, just use them briefly 
                 NCDataset(file, "a") do f
-    
-                    if i > 1
+                    
+                    if config.mask_features[i]
                         QC_mask = true
-                        feature_mask = Matrix{Bool}( .! map(ismissing, f[config.mask_name][:,:]))
+                        feature_mask = f[config.mask_names[i]]
                     else 
                         QC_mask = false 
                         feature_mask = [true true; false false]
