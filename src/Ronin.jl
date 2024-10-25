@@ -2187,25 +2187,37 @@ module Ronin
                         feature_mask = [true true; false false]
                     end 
                     ###Need to actually pass the QC mask 
+                    ###indexer will contain true where gates in the file both were NOT masked out AND met the basic QC thresholds 
                     X, Y, indexer = process_single_file(f, config.input_config, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
                         , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
                         QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
                         mask_features = QC_mask, feature_mask = feature_mask, weight_matrixes=config.task_weights)
-    
-                    if i == 1
-                        init_idxer = indexer 
-                        curr_Y = Y
-                    end 
-                   
+                    
+
+
                     final_idxer = indexer 
-    
+
                     curr_model = models[i]
                     curr_proba = config.met_probs[i]
                     ###Here's where we need to modify. The ONLY gates that will go on to the next pass
                     ### will be the ones between the thresholds, (inclusive on both ends)
                     met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
                     curr_probs[indexer] .= met_probs[:]
-                    
+
+
+                    if i == 1
+                        init_idxer = indexer 
+                        curr_Y = Y
+                        ###Instantiate prediction vector - the gates that meet the basic thresholds/masking on pass 1 are the ones we want to predict on 
+                        final_predictions = fill(false)(sum(indexer))
+                            ###Set gates below predicted threshold to non-met 
+                        final_predictions[met_probs .< curr_proba[1]] .= false
+                        final_predictions[met_probs .> curr_proba[2]] .= true 
+                    else 
+                        ###Indexer has NOT yet been applied so index in to the existing predictions 
+                        final_predictions[indexer][met_probs .< curr_proba[1]] .= false
+                        final_predictions[indexer][met_probs .> curr_proba[2]] .= true 
+                    end 
                     close(f) 
                     ###If this wasn't the last pass, need to write a mask for the gates to be predicted upon in the next iteration 
                     if i < config.num_models 
@@ -2219,14 +2231,12 @@ module Ronin
                         ###Reshape into feature mask 
 
                     end 
-                    ###We'll iteratively construct the prediction vector. Need to determine 
+                    ###Final pass: just take the model's (majority vote) predictions for the class of the gates 
                     if i == config.num_models
-                        final_predictions = (met_probs .> curr_proba[1]) .& (met_probs .<= curr_proba[2])
+                        final_predictions[indexer][met_probs .>= .5] .= true
+                        final_predictions[indexer][met_probs .< .5 ] .= false 
                     end 
                     
-                    ###instead of QC-ing the scan, have adopted the approach of just writing the mask into 
-                    ###First need to index in using the current indexer, and mark the gates less than the low threshold 
-                    ###as non-meteorological, the gates higher than the threshold as meteorological, and then the gates in between 
                 
                 end 
     
@@ -2240,19 +2250,20 @@ module Ronin
             total_met_probs = vcat(total_met_probs, curr_probs[:][init_idxer])
             ##First need to determine the differenc between the initial indexer and the full scan? 
     
-            ###init_indexer contains the gates in the scan that did not meet the basic quality control thresholds. 
-            ###A space will be needed in the predictions for each positive value here. 
-            ###Difference of final_indxer and init_index contains gates that were marked as non-meteorological throughout the course 
-            ###of applying the composite model. The final prediction then is ONLY on the gates that are still valid 
-            ###in final_idxer 
-            ###We are interested in returning the predictions and the validation for a set of gates 
-            curr_predictions = fill(false, (sum(init_idxer))) 
-            ###The only gates the final pass of the model applied a prediction to will be those where 
-            ###BOTH the final indexer and the initial indexer flagged as valid. Assign the model predictions to these gates.
-            pred_idxer = (final_idxer[init_idxer] .== true)
-            curr_predictions[pred_idxer] = final_predictions 
+                        # ###init_indexer contains the gates in the scan that did not meet the basic quality control thresholds. 
+                        # ###A space will be needed in the predictions for each positive value here. 
+                        # ###Difference of final_indxer and init_index contains gates that were marked as non-meteorological throughout the course 
+                        # ###of applying the composite model. The final prediction then is ONLY on the gates that are still valid 
+                        # ###in final_idxer 
+                        # ###We are interested in returning the predictions and the validation for a set of gates 
+                        # curr_predictions = fill(false, (sum(init_idxer))) 
+                        # ###The only gates the final pass of the model applied a prediction to will be those where 
+                        # ###BOTH the final indexer and the initial indexer flagged as valid. Assign the model predictions to these gates.
+                        # pred_idxer = (final_idxer[init_idxer] .== true)
+                        # curr_predictions[pred_idxer] = final_predictions 
+
             ###Add on to final predictions 
-            predictions = vcat(predictions, curr_predictions)
+            predictions = vcat(predictions, final_predictions)
     
         end 
         
