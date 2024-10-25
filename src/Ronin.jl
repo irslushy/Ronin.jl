@@ -2213,6 +2213,11 @@ module Ronin
                             ###Set gates below predicted threshold to non-met 
                         final_predictions[met_probs .< curr_proba[1]] .= false
                         final_predictions[met_probs .> curr_proba[2]] .= true 
+                    else if i == config.num_models
+                            ###Final pass: just take the model's (majority vote) predictions for the class of the gates and we're done! 
+                            final_predictions[indexer][met_probs .>= .5] .= true
+                            final_predictions[indexer][met_probs .< .5 ] .= false
+                            break 
                     else 
                         ###Indexer has NOT yet been applied so index in to the existing predictions 
                         final_predictions[indexer][met_probs .< curr_proba[1]] .= false
@@ -2231,11 +2236,7 @@ module Ronin
                         ###Reshape into feature mask 
 
                     end 
-                    ###Final pass: just take the model's (majority vote) predictions for the class of the gates 
-                    if i == config.num_models
-                        final_predictions[indexer][met_probs .>= .5] .= true
-                        final_predictions[indexer][met_probs .< .5 ] .= false 
-                    end 
+                    
                     
                 
                 end 
