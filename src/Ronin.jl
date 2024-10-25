@@ -2153,16 +2153,21 @@ module Ronin
             push!(models, load_object(path))
         end 
         
+        ###Need to do this file by file so that the spatial context of gates is maintained 
         for file in files
             
                 ###Get dimensions 
             scan_dims = NCDataset(file) do f
                 (dimsize(f["range"]).range, dimsize(f["time"]).time)
             end 
-        
+            
+            ###init_idxer contains the gates that pass the first-level QC checks (NCP, PGG) + inital mask 
             init_idxer = Matrix{Bool}(undef, 0, 1)
+            ###Keep indexer returned by the last pass of the model. This will describe where predictions 
+            ###are made on the last set of gates 
             final_idxer = Matrix{Bool}(undef, 0, 1)
-    
+            
+            ###Current verification, final predictions, and probabilites 
             curr_Y = Vector{Bool}(undef, 0)
             final_predictions = Vector{Bool}(undef, 0)
             curr_probs = fill(-1.0, scan_dims[:])
@@ -2176,7 +2181,7 @@ module Ronin
                     
                     if config.mask_features[i]
                         QC_mask = true
-                        feature_mask = f[config.mask_names[i]]
+                        feature_mask = .! map(ismissing, f[config.mask_names[i]])
                     else 
                         QC_mask = false 
                         feature_mask = [true true; false false]
@@ -2196,14 +2201,32 @@ module Ronin
     
                     curr_model = models[i]
                     curr_proba = config.met_probs[i]
+                    ###Here's where we need to modify. The ONLY gates that will go on to the next pass
+                    ### will be the ones between the thresholds, (inclusive on both ends)
                     met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
                     curr_probs[indexer] .= met_probs[:]
                     
+                    close(f) 
+                    ###If this wasn't the last pass, need to write a mask for the gates to be predicted upon in the next iteration 
+                    if i < config.num_models 
+
+                        gates_of_interest = (met_probs .>= curr_proba[1]) .& (met_probs .<= curr_proba[2])
+                        new_mask = Matrix{Union{Missing, Float64}}(missings(dims))[:]
+                        new_mask[indexer][gates_of_interest] .= 1. 
+                        new_mask = reshape(new_mask, dims)
+
+                        write_field(file, config.mask_names[i+1], new_mask,  attribs=Dict("Units" => "Bool", "Description" => "Gates between met prob theresholds"))
+                        ###Reshape into feature mask 
+
+                    end 
+                    ###We'll iteratively construct the prediction vector. Need to determine 
                     if i == config.num_models
                         final_predictions = (met_probs .> curr_proba[1]) .& (met_probs .<= curr_proba[2])
                     end 
-
-                    QC_scan(f, models[i], config, i, QC_mask, feature_mask) 
+                    
+                    ###instead of QC-ing the scan, have adopted the approach of just writing the mask into 
+                    ###First need to index in using the current indexer, and mark the gates less than the low threshold 
+                    ###as non-meteorological, the gates higher than the threshold as meteorological, and then the gates in between 
                 
                 end 
     
