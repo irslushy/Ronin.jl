@@ -150,6 +150,11 @@ module Ronin
     max_depth::Int = 14
     ```
     Maximum depth of any one tree in the random forest 
+
+    ```julia
+    overwrite_output::Bool = false
+    ```
+    If true, will remove/overwrite existing files when internal functionality attempts to write new data to them 
     """
     Base.@kwdef mutable struct ModelConfig
 
@@ -180,8 +185,6 @@ module Ronin
         QC_mask::Bool = false 
         mask_names::Vector{String} = [""]
 
-        
-
         VARS_TO_QC::Vector{String} = ["VV", "ZZ"]
         QC_SUFFIX::String = "_QC"
 
@@ -191,6 +194,7 @@ module Ronin
         n_trees::Int = 21
         max_depth::Int=14
 
+        overwrite_output::Bool = false 
         
     end 
 
@@ -1698,7 +1702,7 @@ module Ronin
             if i > 1
                 QC_mask = true 
             else 
-                QC_mask = false 
+                QC_mask = config.QC_mask 
             end 
     
             QC_mask ? mask_name = config.mask_names[i] : mask_name = ""
@@ -1714,6 +1718,12 @@ module Ronin
     
             else
                 printstyled("\nCALCULATING FEATURES FOR PASS: $(i)\n", color=:green)
+
+                ###Check to see if the features file already exists, if so, delete it so 
+                ###that it may be overwritten 
+                if config.write_out & config.overwrite_output
+                    isfile(out) ? rm(out) : ""
+                end 
                 X,Y = calculate_features(config.input_path, config.task_path, out, true; 
                                     verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
                                     REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
@@ -1748,20 +1758,11 @@ module Ronin
     
             
             ###If this was the last pass, we don't need to write out a mask, and we're done!
+            ###Otherwise, we need to mask out the features we want to apply the model to on the next pass 
             if i < config.num_models
-                ##Apply QC so that it will propagate to next pass of model 
-                ##The variable being QC'ed here will be the raw variable as specified by the user 
-    
+
                 curr_model = load_object(model_path) 
                 curr_metprobs = config.met_probs[i]
-                ###NEW FRAMEWORK: we predict the features, and the ones between the thresholds are moved on to 
-                ###the next pass. In the limiting case of a one pass model or the final pass, we simply take the 
-                ###model predictions between the thresholds. Above them is meteorological, below and up to the 
-                ###low threshold is non-meteorological 
-    
-                ###In this case, this will only matter for the masked version. 
-                ###Calculate features for each file, get the values to move on to the next pass, and then 
-                ###continue 
     
                 paths = Vector{String}() 
                 file_path = config.input_path
@@ -2109,7 +2110,7 @@ module Ronin
 
 
     """
-        composite_prediction(config::ModelConfig)
+        composite_prediction(config::ModelConfig; write_features_out::Bool=false, feature_outfile::String="placeholder.h5", return_probs::Bool=false)
 
     Passes feature data through a model or series of models and returns model classifications. Applies configuration such as 
     masking and basic QC (high PGG/low NCP) specified by `config`
@@ -2177,73 +2178,82 @@ module Ronin
                 ###REFACTOR NOTES: I THINK PROCESS_SINGLE_FILE CLOSES THE FILE SO WILL NEED TO CHANGE THAT
                 ###TO MOVE OUTSIDE LOOP 
                 ###We don't need to write these out, just use them briefly 
-                NCDataset(file, "a") do f
-                    
-                    if config.mask_features[i]
-                        QC_mask = true
-                        feature_mask = .! map(ismissing, f[config.mask_names[i]])
-                    else 
-                        QC_mask = false 
-                        feature_mask = [true true; false false]
-                    end 
-                    ###Need to actually pass the QC mask 
-                    ###indexer will contain true where gates in the file both were NOT masked out AND met the basic QC thresholds 
-                    X, Y, indexer = process_single_file(f, config.input_config, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
-                        , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
-                        QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
-                        mask_features = QC_mask, feature_mask = feature_mask, weight_matrixes=config.task_weights)
-                    
-
-
-                    final_idxer = indexer 
-
-                    curr_model = models[i]
-                    curr_proba = config.met_probs[i]
-                    ###Here's where we need to modify. The ONLY gates that will go on to the next pass
-                    ### will be the ones between the thresholds, (inclusive on both ends)
-                    met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
-                    curr_probs[indexer] .= met_probs[:]
-
-
-                    if i == 1
-                        init_idxer = indexer 
-                        curr_Y = Y
-                        ###Instantiate prediction vector - the gates that meet the basic thresholds/masking on pass 1 are the ones we want to predict on 
-                        final_predictions = fill(false)(sum(indexer))
-                            ###Set gates below predicted threshold to non-met 
-                        final_predictions[met_probs .< curr_proba[1]] .= false
-                        final_predictions[met_probs .> curr_proba[2]] .= true 
-                    else if i == config.num_models
-                            ###Final pass: just take the model's (majority vote) predictions for the class of the gates and we're done! 
-                            final_predictions[indexer][met_probs .>= .5] .= true
-                            final_predictions[indexer][met_probs .< .5 ] .= false
-                            break 
-                    else 
-                        ###Indexer has NOT yet been applied so index in to the existing predictions 
-                        final_predictions[indexer][met_probs .< curr_proba[1]] .= false
-                        final_predictions[indexer][met_probs .> curr_proba[2]] .= true 
-                    end 
-                    close(f) 
-                    ###If this wasn't the last pass, need to write a mask for the gates to be predicted upon in the next iteration 
-                    if i < config.num_models 
-
-                        gates_of_interest = (met_probs .>= curr_proba[1]) .& (met_probs .<= curr_proba[2])
-                        new_mask = Matrix{Union{Missing, Float64}}(missings(dims))[:]
-                        new_mask[indexer][gates_of_interest] .= 1. 
-                        new_mask = reshape(new_mask, dims)
-
-                        write_field(file, config.mask_names[i+1], new_mask,  attribs=Dict("Units" => "Bool", "Description" => "Gates between met prob theresholds"))
-                        ###Reshape into feature mask 
-
-                    end 
-                    
-                    
+                f = NCDataset(file, "a")
                 
+                if i > 1
+                    QC_mask = true 
+                else 
+                    QC_mask = config.QC_mask 
                 end 
+        
+                QC_mask ? mask_name = config.mask_names[i] : mask_name = ""
     
+                if QC_mask
+                    feature_mask = Matrix{Bool}(.! map(ismissing, f[mask_name]))
+                else 
+                    QC_mask = false 
+                    feature_mask = [true true; false false]
+                end 
+                
+                ###Need to actually pass the QC mask 
+                ###indexer will contain true where gates in the file both were NOT masked out AND met the basic QC thresholds 
+                X, Y, indexer = process_single_file(f, config.task_path, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
+                    , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
+                    QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
+                    mask_features = QC_mask, feature_mask = feature_mask, weight_matrixes=config.task_weights)
+                final_idxer = indexer 
     
+                curr_model = models[i]
+                curr_proba = config.met_probs[i]
+                ###Here's where we need to modify. The ONLY gates that will go on to the next pass
+                ### will be the ones between the thresholds, (inclusive on both ends)
+                met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
+                curr_probs[indexer] .= met_probs[:]
+    
+        
+                if i == 1
+                    init_idxer = copy(indexer)
+                    curr_Y = copy(Y)
+                    ###Instantiate prediction vector - the gates that meet the basic thresholds/masking on pass 1 are the ones we want to predict on 
+                    final_predictions = fill(false, sum(indexer))
+                        ###Set gates below predicted threshold to non-met 
+                    final_predictions[met_probs .< curr_proba[1]] .= false
+                    final_predictions[met_probs .> curr_proba[2]] .= true 
+    
+                elseif i == config.num_models
+    
+                    valid_idxs = indexer[init_idxer]
+                    ###Final pass: just take the model's (majority vote) predictions for the class of the gates and we're done! 
+                    final_predictions[valid_idxs][met_probs .>= maximum(curr_proba)] .= true
+                    final_predictions[valid_idxs][met_probs .<  maximum(curr_proba)] .= false
+                else 
+                    ###Indexer has NOT yet been applied so index in to the existing predictions 
+                    valid_idxs = indexer[init_idxer]
+                    final_predictions[valid_idxs][met_probs .< curr_proba[1]] .= false
+                    final_predictions[valid_idxs][met_probs .> curr_proba[2]] .= true 
+                end
+                close(f)
+                ###If this wasn't the last pass, need to write a mask for the gates to be predicted upon in the next iteration 
+                if i < config.num_models 
+                    print(curr_proba)
+                    gates_of_interest = (met_probs .>= curr_proba[1]) .& (met_probs .<= curr_proba[2])
+            
+                    @assert length(gates_of_interest) == sum(indexer) 
+    
+                    indexer[indexer] .= gates_of_interest 
+                    new_mask = Matrix{Union{Missing, Float64}}(missings(scan_dims))[:]
+                    new_mask[indexer] .= 1. 
+                    new_mask = reshape(new_mask, scan_dims)
+    
+                    write_field(file, config.mask_names[i+1], new_mask,  attribs=Dict("Units" => "Bool", "Description" => "Gates between met prob theresholds"))
+                    ###Reshape into feature mask 
+                   
+    
+                end 
+            
             end 
-    
+            
+            ##Add indexer to the indexer list 
             push!(init_idxers, init_idxer)    
             ###Add verification to full array 
             values = vcat(values, curr_Y)  
@@ -2262,8 +2272,9 @@ module Ronin
                         # ###BOTH the final indexer and the initial indexer flagged as valid. Assign the model predictions to these gates.
                         # pred_idxer = (final_idxer[init_idxer] .== true)
                         # curr_predictions[pred_idxer] = final_predictions 
-
+    
             ###Add on to final predictions 
+            ###Prediction vector has been interatively constructed so will comport with the verification 
             predictions = vcat(predictions, final_predictions)
     
         end 
@@ -2277,7 +2288,7 @@ module Ronin
                 #write_dataset(f, "Scan_indexers", init_idxers)
             end
         end 
-
+    
         if return_probs
             return(predictions, values, init_idxers, total_met_probs)
         else 
