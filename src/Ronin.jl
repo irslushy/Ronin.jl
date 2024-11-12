@@ -170,9 +170,9 @@ module Ronin
 
         file_preprocessed::Vector{Bool} 
 
-        task_path::String = "" 
+        task_paths::Vector{String} = [""]
         task_list::Vector{String} = [""]
-        task_weights::Vector{Matrix{Union{Float64, Missing}}} = [Matrix{Union{Float64, Missing}}(undef, 0,0)]
+        task_weights::Vector{Vector} = [[Matrix{Union{Float64, Missing}}(undef, 0,0)]]
 
         verbose::Bool = true 
         REMOVE_LOW_NCP::Bool = true 
@@ -1687,16 +1687,18 @@ module Ronin
     """
     function train_multi_model(config::ModelConfig)
         ##Quick input sanitation check 
-        @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
+        @assert (length(config.model_output_paths) == length(config.feature_output_paths)
+                 == length(config.met_probs) == length(config.task_paths) == length(config.task_weights))
     
         full_start_time = time() 
         ###Iteratively train models and apply QC_scan with the specified probabilites to train a multi-pass model 
         ###pipeline 
         for (i, model_path) in enumerate(config.model_output_paths)
             
-           
             out = config.feature_output_paths[i] 
-            
+            currt = config.task_paths[i]
+            cw = config.task_weights[i]
+
             ##If execution proceeds past the first iteration, a composite model is being created, and 
             ##so a further mask will be applied to the features 
             if i > 1
@@ -1724,11 +1726,12 @@ module Ronin
                 if config.write_out & config.overwrite_output
                     isfile(out) ? rm(out) : ""
                 end 
-                X,Y = calculate_features(config.input_path, config.task_path, out, true; 
+
+                X,Y = calculate_features(config.input_path, currt, out, true; 
                                     verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
                                     REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
                                     remove_variable = config.remove_var, replace_missing = config.replace_missing,
-                                    write_out = config.write_out, QC_mask = QC_mask, mask_name = mask_name, weight_matrixes=config.task_weights)
+                                    write_out = config.write_out, QC_mask = QC_mask, mask_name = mask_name, weight_matrixes=cw)
                 printstyled("FINISHED CALCULATING FEATURES FOR PASS $(i) in $(round(time() - starttime, digits = 3)) seconds...\n", color=:green)
             end 
     
@@ -1780,11 +1783,11 @@ module Ronin
                     end 
                     
                     ###NEED to update this if it's beyond two pass so we can pass it the correct mask
-                    X, Y, idxer = calculate_features(path, config.task_path, out, true; 
+                    X, Y, idxer = calculate_features(path, currt, out, true; 
                                         verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
                                         REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
                                         remove_variable = config.remove_var, replace_missing = config.replace_missing, return_idxer=true,
-                                        write_out = false, QC_mask = QC_mask, mask_name = mask_name, weight_matrixes=config.task_weights)
+                                        write_out = false, QC_mask = QC_mask, mask_name = mask_name, weight_matrixes=cw)
     
                     met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
                     valid_idxs = (met_probs .> minimum(curr_metprobs)) .& (met_probs .<= maximum(curr_metprobs))
@@ -1804,29 +1807,11 @@ module Ronin
                     write_field(path, config.mask_names[i+1], new_mask, attribs=Dict("Units" => "Bool", "Description" => "Gates between met prob theresholds"))
     
                 end 
-            end 
-    
-            ###Then write out the mask field to the cfradial - this will likely involve keeping 
-            ###some of the features in memory if we don't want to have to do QC_scan over and over. 
-    
-            ###Further intricacies will be included in the multi-model prediction step, as the prediction 
-            ###vector will have to be indexed rather carefully to ensure congruence with the above philosophy 
-            
-            # ###Can potential change this to just write field 
-            # ###Also, we're passing in the model object here because we don't want to have to open it 
-            # ###every time, takes a while to load into memory. 
-            # QC_scan(config.input_path, config.input_config, model_path;
-            #         VARIABLES_TO_QC = [config.remove_var], QC_suffix = config.QC_SUFFIX,
-            #         indexer_var = config.remove_var, decision_threshold = config.met_probs[i], 
-            #         REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP=config.REMOVE_LOW_NCP)
-        
+            end   
         end 
-        printstyled("\n COMPLETED TRAINING MODEL IN $(round(time() - full_start_time, digits = 3)) seconds...\n", color=:green)
-    
+        printstyled("\n COMPLETED TRAINING MODEL IN $(round(time() - full_start_time, digits = 3)) seconds...\n", color=:green)   
     end 
     
-
-
     ###End user will have to be careful here, because changing the probabilities upstream will propagate 
     ###into the calculated features 
     """
@@ -2175,6 +2160,9 @@ module Ronin
     
             for (i, model_path) in enumerate(config.model_output_paths)
                 
+
+                currt = config.task_paths[i]
+                cw = config.task_weights[i]
                 ###REFACTOR NOTES: I THINK PROCESS_SINGLE_FILE CLOSES THE FILE SO WILL NEED TO CHANGE THAT
                 ###TO MOVE OUTSIDE LOOP 
                 ###We don't need to write these out, just use them briefly 
@@ -2197,11 +2185,12 @@ module Ronin
                 
                 ###Need to actually pass the QC mask 
                 ###indexer will contain true where gates in the file both were NOT masked out AND met the basic QC thresholds 
-                X, Y, indexer = process_single_file(f, config.task_path, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
+                X, Y, indexer = process_single_file(f, currt, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
                     , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
                     QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
-                    mask_features = QC_mask, feature_mask = feature_mask, weight_matrixes=config.task_weights)
+                    mask_features = QC_mask, feature_mask = feature_mask, weight_matrixes=cw)
                 final_idxer = indexer 
+                print(size(X))
     
                 curr_model = models[i]
                 curr_proba = config.met_probs[i]
@@ -2235,7 +2224,6 @@ module Ronin
                 close(f)
                 ###If this wasn't the last pass, need to write a mask for the gates to be predicted upon in the next iteration 
                 if i < config.num_models 
-                    print(curr_proba)
                     gates_of_interest = (met_probs .>= curr_proba[1]) .& (met_probs .<= curr_proba[2])
             
                     @assert length(gates_of_interest) == sum(indexer) 
@@ -2246,9 +2234,7 @@ module Ronin
                     new_mask = reshape(new_mask, scan_dims)
     
                     write_field(file, config.mask_names[i+1], new_mask,  attribs=Dict("Units" => "Bool", "Description" => "Gates between met prob theresholds"))
-                    ###Reshape into feature mask 
-                   
-    
+                    
                 end 
             
             end 
@@ -2283,7 +2269,7 @@ module Ronin
             h5open(feature_outfile, "w") do f 
                 write_dataset(f, "Predictions", predictions)
                 write_dataset(f, "Verification", values)
-                write_dataset(f, "Met_probabilities", met_probs)
+                #write_dataset(f, "Met_probabilities", met_probs)
                 ##Below line is giving me Type Array does not have a definite size errors 
                 #write_dataset(f, "Scan_indexers", init_idxers)
             end
@@ -2331,6 +2317,7 @@ module Ronin
     end 
     
     """
+    PRETTY MUCH DEPRECATED WITH VERSIONS OF RONIN CODE NOVEMBER 2024 and ONWARD 
 
         multipass_uncertain(base_config::ModelConfig, low_threshold::Float64, high_threshold::Float64; 
         low_model_path::String = "low_config_model.jld2", skip_training_base=false)
