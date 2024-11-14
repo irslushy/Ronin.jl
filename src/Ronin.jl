@@ -195,6 +195,7 @@ module Ronin
         max_depth::Int=14
 
         overwrite_output::Bool = false 
+        fill_val::Float64 = FILL_VAL 
         
     end 
 
@@ -2020,8 +2021,70 @@ module Ronin
                 
     end     
 
+    """
+        QC_scan(config::ModelConfig, filepath::String, predictions::Vector{Bool}, init_idxer::Vector{Bool})
+
+        Internal function to apply QC to a scan specified by `filepath` using the predictions/indexer specified 
+        by `predictions` and `init_idxer`. Generally used in the context of a multi-pass model. 
+    """
+    function QC_scan(config::ModelConfig, filepath::String, predictions::Vector{Bool}, init_idxer::Vector{Bool})
+
+        input_set = NCDataset(filepath, "a") 
+        sweep_dims = (dimsize(input_set["range"]).range, dimsize(input_set["time"]).time)
+
+        for var in config.VARS_TO_QC
+            printstyled("QC-ING $(var) in $(filepath)\n", color=:green)
+            ##Create new field to reshape QCed field to 
+            NEW_FIELD = missings(Float16, sweep_dims) 
+            ##Only modify relevant data based on indexer, everything else should be fill value 
+            QCED_FIELDS = input_set[var][:][init_idxer]
+
+            NEW_FIELD_ATTRS = Dict(
+                "units" => input_set[var].attrib["units"],
+                "long_name" => "Random Forest Model QC'ed $(var) field"
+            )
+
+             ##Set MISSINGS to fill value in current field
+                    
+             initial_count = count(.!map(ismissing, QCED_FIELDS))
+             ##Apply predictions from model 
+             ##If model predicts 1, this indicates a prediction of meteorological data 
+             QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? Float32(x[2]) : missing, enumerate(QCED_FIELDS))
+             final_count = count(.!map(ismissing, QCED_FIELDS))
+             
+             ###Need to reconstruct original 
+             NEW_FIELD = NEW_FIELD[:]
+             NEW_FIELD[init_idxer] = QCED_FIELDS
+             NEW_FIELD = Matrix{Union{Missing, Float32}}(reshape(NEW_FIELD, sweep_dims))
+
+            try 
+                print("THING: $(var * config.QC_SUFFIX)")
+                defVar(input_set, var * config.QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = config.FILL_VAL; attrib=NEW_FIELD_ATTRS)
+            catch e
+                print(e)
+                print("INPUT_SET $(typeof(input_set)), $(typeof(NEW_FIELD)), VAR: $(typeof(var))")
+                ###Simply overwrite the variable 
+                if e.msg == "NetCDF: String match to name in use"
+                    if config.verbose
+                        println("Already exists... overwriting") 
+                    end 
+                    input_set[var*config.QC_SUFFIX][:,:] = NEW_FIELD 
+                else 
+                    throw(e)
+                end 
+            end 
+
+            if config.verbose
+                println("\r\nCompleted in $(time()-starttime ) seconds")
+                println()
+                printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
+                println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
+            end 
+        end     
+    end 
 
     """
+    DEPRECATED
     Version of QC_Scan used for multiple-pass models. 
     Required argument is a model configuration object.
     Optional arguments: 
@@ -2035,62 +2098,82 @@ module Ronin
     ```
     What to name the probability variable to file 
     """
-    function QC_scan(config::ModelConfig; output_probs::Bool = false, prob_name::String = "")
+    # function QC_scan(config::ModelConfig; output_probs::Bool = false, prob_name::String = "")
 
-        @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
+    #     @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
     
-        ###Let's get the files 
-        if isdir(config.input_path)
-            files = parse_directory(config.input_path)
-        else
-            files = [config.input_path]
-        end 
+    #     ###Let's get the files 
+    #     if isdir(config.input_path)
+    #         files = parse_directory(config.input_path)
+    #     else
+    #         files = [config.input_path]
+    #     end 
     
     
-        ###Load models into memory 
+    #     ###Load models into memory 
     
-        printstyled("LOADING MODELS....\n", color=:green)
-        flush(stdout)
-        models = [] 
+    #     printstyled("LOADING MODELS....\n", color=:green)
+    #     flush(stdout)
+    #     models = [] 
     
-        for model_path in config.model_output_paths 
-            push!(models, load_object(model_path))
-        end 
+    #     for model_path in config.model_output_paths 
+    #         push!(models, load_object(model_path))
+    #     end 
     
-        for file in files
+    #     for file in files
     
-            print("QC-ing $(file)")
-            starttime = time() 
-            X = ""
-            Y= ""
-            indexer = ""
+    #         print("QC-ing $(file)")
+    #         starttime = time() 
+    #         X = ""
+    #         Y= ""
+    #         indexer = ""
             
-            for (i, model_path) in enumerate(config.model_output_paths)
+    #         for (i, model_path) in enumerate(config.model_output_paths)
     
-                ###We don't need to write these out, just use them briefly 
-                NCDataset(file, "a") do f
+    #             ###We don't need to write these out, just use them briefly 
+    #             NCDataset(file, "a") do f
                  
     
-                    if i > 1
-                        QC_mask = true
-                        data = f[config.mask_name][:,:]
-                        feature_mask = Matrix{Bool}( .! map(ismissing,data))
-                    else 
-                        QC_mask = config.QC_mask 
-                        feature_mask = QC_mask ? config.mask_name : [true true; false false]
-                    end 
-                    ###Need to actually pass the QC mask 
+    #                 if i > 1
+    #                     QC_mask = true
+    #                     data = f[config.mask_name][:,:]
+    #                     feature_mask = Matrix{Bool}( .! map(ismissing,data))
+    #                 else 
+    #                     QC_mask = config.QC_mask 
+    #                     feature_mask = QC_mask ? config.mask_name : [true true; false false]
+    #                 end 
+    #                 ###Need to actually pass the QC mask 
                     
-                    QC_scan(f, models[i], config, i, QC_mask, feature_mask, output_probs=output_probs, prob_name=prob_name)
+    #                 QC_scan(f, models[i], config, i, QC_mask, feature_mask, output_probs=output_probs, prob_name=prob_name)
 
-                end 
+    #             end 
     
-            end 
+    #         end 
     
-            print("FINISHED QC-ing$(file) in $(round(time()-starttime, digits=2))")
-        end 
+    #         print("FINISHED QC-ing$(file) in $(round(time()-starttime, digits=2))")
+    #     end 
     
+    # end 
+
+
+    """
+        QC_scan(config::ModelConfig)
+
+    Applies trained composite model to data within scan or set of scans. Will set gates the 
+    model deems to be non-meteorological to MISSING, including gates that do not meet 
+    initial basic quality control thresholds. Essentially just a wrapper around composite_prediction. 
+
+
+    Returns: None
+
+
+    """
+    function QC_scan(config::ModelConfig)
+
+        composite_prediction(config, write_features_out=false, QC_mode = true)
+
     end 
+
 
 
 
@@ -2099,6 +2182,12 @@ module Ronin
 
     Passes feature data through a model or series of models and returns model classifications. Applies configuration such as 
     masking and basic QC (high PGG/low NCP) specified by `config`
+
+    ### Optional keyword arguments 
+    ```
+    QC_mode::Bool = false 
+    ```
+    If set to true, the function will instead be used to apply quality control to a (set of) scan(s)
 
     ### Returns 
     
@@ -2113,7 +2202,7 @@ module Ronin
          All values returned will be only those that passed quality control checks in the first pass of the model 
         minimum NCP / PGG thresholds. In order to reconstruct a scan, user would need to use the values in the returned indexers. 
     """
-    function composite_prediction(config::ModelConfig; write_features_out::Bool = false, feature_outfile::String="placeholder.h5", return_probs::Bool=false)
+    function composite_prediction(config::ModelConfig; write_features_out::Bool = false, feature_outfile::String="placeholder.h5", return_probs::Bool=false, QC_mode::Bool=false)
 
         @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
     
@@ -2239,29 +2328,35 @@ module Ronin
             
             end 
             
-            ##Add indexer to the indexer list 
-            push!(init_idxers, init_idxer)    
-            ###Add verification to full array 
-            values = vcat(values, curr_Y)  
-            ##We only care about the probabilities where the indexer is 
-            total_met_probs = vcat(total_met_probs, curr_probs[:][init_idxer])
-            ##First need to determine the differenc between the initial indexer and the full scan? 
-    
-                        # ###init_indexer contains the gates in the scan that did not meet the basic quality control thresholds. 
-                        # ###A space will be needed in the predictions for each positive value here. 
-                        # ###Difference of final_indxer and init_index contains gates that were marked as non-meteorological throughout the course 
-                        # ###of applying the composite model. The final prediction then is ONLY on the gates that are still valid 
-                        # ###in final_idxer 
-                        # ###We are interested in returning the predictions and the validation for a set of gates 
-                        # curr_predictions = fill(false, (sum(init_idxer))) 
-                        # ###The only gates the final pass of the model applied a prediction to will be those where 
-                        # ###BOTH the final indexer and the initial indexer flagged as valid. Assign the model predictions to these gates.
-                        # pred_idxer = (final_idxer[init_idxer] .== true)
-                        # curr_predictions[pred_idxer] = final_predictions 
-    
-            ###Add on to final predictions 
-            ###Prediction vector has been interatively constructed so will comport with the verification 
-            predictions = vcat(predictions, final_predictions)
+
+            ###Probably put the below into a separate function for code clarity 
+            if QC_mode 
+                QC_scan(config, file, Vector{Bool}(final_predictions), Vector{Bool}(init_idxer))
+            else 
+                ##Add indexer to the indexer list 
+                push!(init_idxers, init_idxer)    
+                ###Add verification to full array 
+                values = vcat(values, curr_Y)  
+                ##We only care about the probabilities where the indexer is 
+                total_met_probs = vcat(total_met_probs, curr_probs[:][init_idxer])
+                ##First need to determine the differenc between the initial indexer and the full scan? 
+        
+                            # ###init_indexer contains the gates in the scan that did not meet the basic quality control thresholds. 
+                            # ###A space will be needed in the predictions for each positive value here. 
+                            # ###Difference of final_indxer and init_index contains gates that were marked as non-meteorological throughout the course 
+                            # ###of applying the composite model. The final prediction then is ONLY on the gates that are still valid 
+                            # ###in final_idxer 
+                            # ###We are interested in returning the predictions and the validation for a set of gates 
+                            # curr_predictions = fill(false, (sum(init_idxer))) 
+                            # ###The only gates the final pass of the model applied a prediction to will be those where 
+                            # ###BOTH the final indexer and the initial indexer flagged as valid. Assign the model predictions to these gates.
+                            # pred_idxer = (final_idxer[init_idxer] .== true)
+                            # curr_predictions[pred_idxer] = final_predictions 
+        
+                ###Add on to final predictions 
+                ###Prediction vector has been interatively constructed so will comport with the verification 
+                predictions = vcat(predictions, final_predictions)
+            end 
     
         end 
         
@@ -2277,6 +2372,8 @@ module Ronin
     
         if return_probs
             return(predictions, values, init_idxers, total_met_probs)
+        elseif QC_mode 
+            return 
         else 
             return(predictions, values, init_idxers)
         end 
