@@ -195,7 +195,7 @@ module Ronin
         max_depth::Int=14
 
         overwrite_output::Bool = false 
-        fill_val::Float64 = FILL_VAL 
+        FILL_VAL::Float64 = FILL_VAL 
         
     end 
 
@@ -1711,6 +1711,7 @@ module Ronin
             QC_mask ? mask_name = config.mask_names[i] : mask_name = ""
     
             starttime = time() 
+            
             if config.file_preprocessed[i]
     
                 print("Reading input features from file $(out)...\n")
@@ -1813,47 +1814,6 @@ module Ronin
         printstyled("\n COMPLETED TRAINING MODEL IN $(round(time() - full_start_time, digits = 3)) seconds...\n", color=:green)   
     end 
     
-    ###End user will have to be careful here, because changing the probabilities upstream will propagate 
-    ###into the calculated features 
-    """
-
-
-    """
-    function predict_multi_model(config::ModelConfig)
-
-
-        for (i, model_path) in enumerate(config.model_output_paths)
-            
-            out = config.feature_output_paths[i]  
-
-            if i > 1
-                QC_mask = true 
-            else 
-                QC_mask = false 
-            end 
-
-            QC_mask ? mask_name = config.mask_name : mask_name = ""
-
-            ##Get features, then calculate predictions on this set of features with existing model 
-            calculate_features(config.input_path, config.input_config, out, true; 
-                                verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
-                                REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
-                                remove_variable = config.remove_var, replace_missing = config.replace_missing,
-                                write_out = config.write_out, QC_mask = QC_mask, mask_name = mask_name)
-            
-            QC_scan(config.input_path, config.input_config, model_path; VARIABLES_TO_QC = [config.remove_var], 
-            QC_suffix = config.QC_suffix, indexer_var = config.remove_var, decision_threshold = config.met_probs[i])
-
-        end 
-
-        out = config.feature_output_paths[-1]
-        model_path = config.model_output_paths[-1]
-
-
-        predict_with_model(model_path, out)
-        ###On final iteration, actually predict with the model and return these predictions 
-    end 
-
     
     function QC_scan(input_cfrad::String, features::Matrix{Float64}, indexer::Vector{Bool}, config::ModelConfig, iter::Int64)
         
@@ -2029,6 +1989,7 @@ module Ronin
     """
     function QC_scan(config::ModelConfig, filepath::String, predictions::Vector{Bool}, init_idxer::Vector{Bool})
 
+        starttime = time() 
         input_set = NCDataset(filepath, "a") 
         sweep_dims = (dimsize(input_set["range"]).range, dimsize(input_set["time"]).time)
 
@@ -2047,9 +2008,10 @@ module Ronin
              ##Set MISSINGS to fill value in current field
                     
              initial_count = count(.!map(ismissing, QCED_FIELDS))
+             print("INITiAL COUNT: $(initial_count)")
              ##Apply predictions from model 
              ##If model predicts 1, this indicates a prediction of meteorological data 
-             QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? Float32(x[2]) : missing, enumerate(QCED_FIELDS))
+             QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : missing, enumerate(QCED_FIELDS))
              final_count = count(.!map(ismissing, QCED_FIELDS))
              
              ###Need to reconstruct original 
@@ -2311,6 +2273,8 @@ module Ronin
                     final_predictions[valid_idxs][met_probs .> curr_proba[2]] .= true 
                 end
                 close(f)
+                ###Probably need to remove this for speed purposes... keep it in memory, 
+                ###clear it for the next scan. Just pass it to QC_mask 
                 ###If this wasn't the last pass, need to write a mask for the gates to be predicted upon in the next iteration 
                 if i < config.num_models 
                     gates_of_interest = (met_probs .>= curr_proba[1]) .& (met_probs .<= curr_proba[2])
@@ -2529,5 +2493,138 @@ module Ronin
         end 
 
     end 
+
+
+
+    """
+        `evaluate_model(predictions::Vector{Bool}, targets::Vector{Bool})`
+
+        Given a vector of predictions and targets, calculates various scores and returns them in the order of 
+
+        * `prec_score::Float64` -> Precision Score, defined as number of true positives divided by sum of true positives and false positives 
+        * `recall::Float64` Recall, defined as number of true positives divided by sum of true positives and false negatives 
+        * `f1::Float64` F1 score 
+        * `true_positives::Float64` Number of true positives 
+        * `false_positives::Float64` Number of false positives 
+        * `true_negatives::Float64` Number of true negatives 
+        * `false_negatives::Float64` Number of false negatives 
+        * `num_gates::Float64` Total number of classifications 
+
+    """
+    function evaluate_model(predictions::Vector{Bool}, targets::Vector{Bool})
+
+        tp_idx = (predictions .== 1) .& (targets .==1) 
+        fp_idx = (predictions .== 1) .& (targest .==0)
+
+        tn_idx = (predictions .== 0) .& (targets .==0)
+        fn_idx = (predictions .== 0) .& (targets .==1)
+
+        prec = sum(tp_idx) / (sum(tp_idx) + sum(fp_idx))
+        recall = sum(tp_idx) / (sum(tp_idx) + sum(fn_idx))
+
+        f1 = (2 * prec * recall) / (prec + recall) 
+
+        return(prec, recall, f1, sum(tp_idx), sum(fp_idx), sum(tn_idx), sum(fn_idx), length(predictions))
+    end 
+
+    function composite_prediction(model_paths::Vector{String}, feature_paths::Vector{String})
+
+        ###Load models 
+        models = [load_object(path) for path in model_paths]
+
+
+    end 
+
+
+
+    """
+        `evaluate_model(config::ModelConfig)`
+
+        Returns a row of a DataFrame with a variety of metrics about a given model. 
+    """
+    function evaluate_model(config::ModelConfig; models_trained::Bool = false)
+
+
+        ###This function will not handle the case where the model is trained but the features are not written. 
+        ###it also implicitly assumes that the features will be written out. 
+
+        ##Return dataframe with model configuration charactersitics as well as 
+        ##Things we want to have here: task paths 
+
+        if ! config.write_out
+            throw("Error: evaluate_model must write features to disk. Please set config.write_out to trues")
+        end 
+
+        if ! models_trained 
+            train_multi_model(config)
+        end 
+
+        ###Now, use the calculated features to get the predictions. 
+
+        models = [load_object(model) for model in config.model_output_paths]
+
+        predictions = Vector{Bool}(undef, 0)
+        targets = Vector{Bool}(undef, 0)
+
+        ###Eventually want to move this into a function to ensure that the code is exactly the same between the different versions 
+        ###of the functions used to apply predictions.  
+        for (i, model) in enumerate(models)
+
+            currf = h5open(config.feature_output_paths[i])
+            curr_features = currf["X"][:,:]
+            curr_targets = Vector{Bool}(currf["Y"][:,:][:])
+            close(currf)
+
+            met_probs = DecisionTree.predict_proba(model, curr_features)[:,2]
+
+            if i == length(models)
+                ###If this is the last model in the chain, by convention, gates that are at or above the maximum probability listed 
+                ###for this pass of the model will be classified as meteorological. Everything else will be classified as 
+                ###non-meteorological  
+                thresh = maximum(config.met_probs[i])
+                preds = met_probs .>= thresh 
+                predictions = cat(predictions, preds, dims=1)
+                targets = cat(targets, curr_targets, dims=1)
+            else   
+                ###if this isn't the last pass, some indexing needs to be done to ensure that we're looking at the correct gates 
+                ###and that certain gates are not double counted. The gates that this model will be used upon will be 
+                ###non-meteorological: < minimum threshold 
+                ###meteorological: > maximum threshold 
+                min_t = minimum(config.met_probs[i]) 
+                max_t = maximum(config.met_probs[i])
+
+                idxer = (met_probs .< min_t) .| (met_probs .> max_t) 
+                preds = met_probs[idxer] .> max_t 
+
+                predictions = cat(predictions, preds, dims=1)
+                targets = cat(targets, curr_targets[idxer], dims=1) 
+            end 
+
+        end  
+            
+        ###Returns precision, recall, f1, n true_postives, n false_positives, n true_negatives, n false_negatives 
+        scores = evaluate_model(Vector{Bool}(predictions), Vector{Bool}(targets))
+
+        retval = DataFrame( 
+                                met_probs = [config.met_probs],
+                                task_paths = [config.task_paths],
+                                class_weights = [config.class_weights],
+                                n_trees = [config.n_trees],
+                                max_depth = [config.max_depth],
+                                precision = scores[1],
+                                recall = scores[2],
+                                f1 = scores[3],
+                                true_positives = scores[4],
+                                false_positives = scores[5],
+                                true_negatives = scores[6],
+                                false_negatives = scores[7],
+        )
+
+        return retval 
+    end 
+
+
+    
+
     
 end 
