@@ -461,6 +461,10 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
     PGG_Completed_Flag = false 
     NCP_Completed_Flag = false 
     add_weight_matrix = (weight_matrixes != [Matrix{Union{Missing, Float64}}(undef, 0,0)]) & (length(weight_matrixes) == length(tasks))
+    ### 
+    if (! add_weight_matrix) & (weight_matrixes != [[Matrix{Union{Missing, Float64}}(undef, 0,0)]])
+        throw("ERROR: Weight matrixes are not default but do not match length of tasks... terminating...")
+    end 
     
     for (i, task) in enumerate(tasks)
 
