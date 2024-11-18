@@ -2261,16 +2261,30 @@ module Ronin
                     final_predictions[met_probs .> curr_proba[2]] .= true 
     
                 elseif i == config.num_models
-    
+                    
+                    ###Some weird syntax here because Julia doesn't like double indexing 
+                    ###Grab spots in the scan where the gates were both passing minimum quality control thresholds 
+                    ###and also have passed previous passes. Do this to ensure dimensional consistency with the 
+                    ###final prediction vector. 
                     valid_idxs = indexer[init_idxer]
+                    ###Grab locations in the prediction vector where this pass is being applied.
+                    curr_preds = final_predictions[valid_idxs]
+
                     ###Final pass: just take the model's (majority vote) predictions for the class of the gates and we're done! 
-                    final_predictions[valid_idxs][met_probs .>= maximum(curr_proba)] .= true
-                    final_predictions[valid_idxs][met_probs .<  maximum(curr_proba)] .= false
+                    curr_preds[met_probs .>= maximum(curr_proba)] .= true
+                    curr_preds[met_probs .<  maximum(curr_proba)] .= false
+                    ###Reassign 
+                    final_predictions[valid_idxs] .= curr_preds
                 else 
                     ###Indexer has NOT yet been applied so index in to the existing predictions 
                     valid_idxs = indexer[init_idxer]
-                    final_predictions[valid_idxs][met_probs .< curr_proba[1]] .= false
-                    final_predictions[valid_idxs][met_probs .> curr_proba[2]] .= true 
+                    ###Grab locations in the prediction vector where this pass is being applied.
+                    curr_preds = final_predictions[valid_idxs]
+                    curr_preds[met_probs .< curr_proba[1]] .= false
+                    curr_preds[met_probs .> curr_proba[2]] .= true 
+
+                    final_predictions[valid_idxs] .= curr_preds
+
                 end
                 close(f)
                 ###Probably need to remove this for speed purposes... keep it in memory, 
@@ -2531,7 +2545,6 @@ module Ronin
 
         ###Load models 
         models = [load_object(path) for path in model_paths]
-
 
     end 
 
