@@ -2514,7 +2514,7 @@ module Ronin
     function evaluate_model(predictions::Vector{Bool}, targets::Vector{Bool})
 
         tp_idx = (predictions .== 1) .& (targets .==1) 
-        fp_idx = (predictions .== 1) .& (targest .==0)
+        fp_idx = (predictions .== 1) .& (targets .==0)
 
         tn_idx = (predictions .== 0) .& (targets .==0)
         fn_idx = (predictions .== 0) .& (targets .==1)
