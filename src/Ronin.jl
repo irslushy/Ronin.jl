@@ -1759,7 +1759,7 @@ module Ronin
             
             printstyled("\n...TRAINING FOR PASS: $(i) ON $(size(X)[1]) GATES...\n", color=:green)
         
-            train_model(out, model_path, class_weights = class_weights)
+            train_model(out, model_path, n_trees = config.n_trees, max_depth = config.max_depth, class_weights = class_weights)
     
             
             ###If this was the last pass, we don't need to write out a mask, and we're done!
@@ -2540,14 +2540,6 @@ module Ronin
 
         return(prec, recall, f1, sum(tp_idx), sum(fp_idx), sum(tn_idx), sum(fn_idx), length(predictions))
     end 
-
-    function composite_prediction(model_paths::Vector{String}, feature_paths::Vector{String})
-
-        ###Load models 
-        models = [load_object(path) for path in model_paths]
-
-    end 
-
 
 
     """
