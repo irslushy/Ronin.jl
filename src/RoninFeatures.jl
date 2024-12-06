@@ -104,10 +104,11 @@ end
 
 function calc_iso(var::AbstractMatrix{Union{Missing, Float64}};
     weights::Matrix{Union{Missing, Float64}} = iso_weights, 
-    window::Matrix{Union{Missing, Float64}} = iso_window)
+    window = iso_window)
 
+    ###Where is missing? 
     missings = map((x) -> Float64(ismissing(x)), var)
-
+    ###Calculate sum of missing gates in the windowed area for each gate in scan 
     iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window) 
 end
 
@@ -280,43 +281,46 @@ function get_task_params(params_file, variablelist; delimiter=",")
     tasks = readlines(params_file)
     task_param_list = String[]
     
-    for line in tasks
-        ###Ignore comments in the parameter file 
-        if line[1] == '#'
-            continue
-        else
-            delimited = split(line, delimiter)
-            for token in delimited
-                ###Remove whitespace and see if the token is of the form ABC(DEF)
-                token = strip(token, ' ')
-                expr_ret = match(func_regex,token)
 
-                if token == ""
-                    printstyled("WARNING: Empty Token in config file... continuing to next token...\n", color=:yellow) 
-                    continue 
-                end 
-                ###If it is, make sure that it is both a valid function and a valid variable 
-                if (typeof(expr_ret) != Nothing)
-                    if (expr_ret[1] ∉ valid_funcs || 
-                        (expr_ret[2] ∉ variablelist && expr_ret[2] ∉ valid_derived_params))
-                        println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
-                        "Potentially invalid function or missing variable\n")
-                    else
-                        ###Add λ to the front of the token to indicate it is a function call
-                        ###This helps later when trying to determine what to do with each "task" 
-                        push!(task_param_list, token)
-                    end 
-                else
-                    ###Otherwise, check to see if this is a valid variable 
-                    if token in variablelist || token ∈ valid_funcs || token ∈ valid_derived_params 
-                        push!(task_param_list, token)
-                    else
-                        printstyled("\"$token\" NOT FOUND IN CFRAD FILE.... POTENTIAL ERROR IN CONFIG FILE\n", color=:red)
-                    end
-                end
-            end
+    full_tasks = ""
+    for itm in tasks
+        if (itm != "") && (itm[1] != "#")
+            full_tasks = full_tasks * "," * strip(itm, ',')
         end 
     end 
+
+    
+    delimited = split(full_tasks, delimiter)
+    for token in delimited
+        ###Remove whitespace and see if the token is of the form ABC(DEF)
+        token = strip(token, ' ')
+        expr_ret = match(func_regex,token)
+
+        if token == ""
+            printstyled("WARNING: Empty Token in config file... continuing to next token...\n", color=:yellow) 
+            continue 
+        end 
+        ###If it is, make sure that it is both a valid function and a valid variable 
+        if (typeof(expr_ret) != Nothing)
+            if (expr_ret[1] ∉ valid_funcs || 
+                (expr_ret[2] ∉ variablelist && expr_ret[2] ∉ valid_derived_params))
+                println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
+                "Potentially invalid function or missing variable\n")
+            else
+                ###Add λ to the front of the token to indicate it is a function call
+                ###This helps later when trying to determine what to do with each "task" 
+                push!(task_param_list, token)
+            end 
+        else
+            ###Otherwise, check to see if this is a valid variable 
+            if token in variablelist || token ∈ valid_funcs || token ∈ valid_derived_params 
+                push!(task_param_list, token)
+            else
+                printstyled("\"$token\" NOT FOUND IN CFRAD FILE.... POTENTIAL ERROR IN CONFIG FILE\n", color=:red)
+            end
+        end
+    end 
+
     return(task_param_list)
 end 
 
@@ -331,32 +335,35 @@ function get_task_params(params_file; delimiter = ',')
     tasks = readlines(params_file)
     task_param_list = String[] 
 
-    for line in tasks
-        ###Ignore comments in the parameter file 
-        if line[1] == '#'
-            continue
-        else
-            delimited = split(strip(line), delimiter)
-            for token in delimited
-                token = strip(token, ' ')
-                if token == ""
-                    continue 
-                end 
-                expr_ret = match(func_regex,token)
-
-                if (typeof(expr_ret) != Nothing)
-                    if (expr_ret[1] ∉ valid_funcs)
-                        println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
-                        "Potentially invalid function or missing variable\n")
-                    else
-                        push!(task_param_list, token)
-                    end 
-                else 
-                    push!(task_param_list, token)                 
-                end 
-            end 
+    full_tasks = ""
+    for itm in tasks
+        if (itm != "") && (itm[1] != "#")
+            full_tasks = full_tasks * "," * strip(itm, ',')
         end 
     end 
+
+
+
+    delimited = split(strip(full_tasks), delimiter)
+    for token in delimited
+        token = strip(token, ' ')
+        if token == ""
+            continue 
+        end 
+        expr_ret = match(func_regex,token)
+
+        if (typeof(expr_ret) != Nothing)
+            if (expr_ret[1] ∉ valid_funcs)
+                println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
+                "Potentially invalid function or missing variable\n")
+            else
+                push!(task_param_list, token)
+            end 
+        else 
+            push!(task_param_list, token)                 
+        end 
+    end 
+
     return task_param_list 
 end 
 
@@ -435,7 +442,8 @@ For spatial parameters, whether or not to replace `missings` values with `FILL_V
 function process_single_file(cfrad::NCDataset, argfile_path::String; 
     HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
      QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false,
-    mask_features::Bool = false, feature_mask::Matrix{Bool} = [true true ; false false;])
+    mask_features::Bool = false, feature_mask::Matrix{Bool} = [true true ; false false;], 
+        weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}= [Matrix{Union{Missing, Float64}}(undef, 0,0)])
 
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
     #println("\r\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
@@ -458,7 +466,12 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
 
     PGG_Completed_Flag = false 
     NCP_Completed_Flag = false 
-
+    add_weight_matrix = (weight_matrixes != [Matrix{Union{Missing, Float64}}(undef, 0,0)]) & (length(weight_matrixes) == length(tasks))
+    ### 
+    if (! add_weight_matrix) & (weight_matrixes != [[Matrix{Union{Missing, Float64}}(undef, 0,0)]])
+        throw("ERROR: Weight matrixes are not default but do not match length of tasks... terminating...")
+    end 
+    
     for (i, task) in enumerate(tasks)
 
         ###Test to see if task involves a spatial parameter function call) 
@@ -484,13 +497,26 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
             var = regex_match[2]
             
             
+            if add_weight_matrix
+                weight_matrix = weight_matrixes[i] 
+                window_size = size(weight_matrix)
+            else 
+                currname = Symbol(lowercase(regex_match[1]) * "_weights")
+                weight_matrix = @eval($currname)
+                window_size = size(weight_matrix)
+            end 
+
+
             if mask_features
                 currdat = cfrad[var][:,:]
-                currdat[feature_mask] .= missing 
+                ##Set invalid data to missing for spatial parameter calculations. This way, they 
+                ##will be ignored. 
+                currdat[.! feature_mask] .= missing 
                 raw = @eval $func($currdat)[:]
             else 
-                raw = @eval $func($cfrad[$var][:,:])[:]
+                raw = @eval $func($cfrad[$var][:,:]; weights=$weight_matrix, window = $window_size )[:]
             end 
+
             filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
         
             any(isnan, filled) ? throw("NAN ERROR") : 
@@ -498,7 +524,9 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
             X[:, i] = filled[:]
             calc_length = time() - startTime
 
-
+        ###For any of the other tasks, we don't need to mask the features beforehand because 
+        ###They do not have any spatial dependence on missing gates - they are only a gatewise function 
+        ###IF a new function is implemented that DOES have spatial context, that will need to be changed
         elseif (task in valid_derived_params)
 
             startTime = time() 
@@ -529,11 +557,11 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
 
 
     ###Uses INDEXER to remove data not meeting basic quality thresholds
-    ###A value of 0 in INDEXER will remove the data from training/evaluation 
+    ###A value of 0/False in INDEXER will remove the data from training/evaluation 
     ###by the subsequent random forest model 
 
     ###Begin by simply removing the gates where no velocity is found 
-    #println("REMOVING MISSING DATA BASED ON $(remove_variable)...")
+
     starttime = time() 
 
     VT = cfrad[remove_variable][:]
@@ -667,7 +695,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
            
             if mask_features
                 currdat = cfrad[var][:,:]
-                currdat[feature_mask] .= missing 
+                currdat[.! feature_mask] .= missing 
                 raw = @eval $func($currdat)[:]
             else 
                 raw = @eval $func($cfrad[$var][:,:]; weights = $weight_matrix, window = $window_size)[:]

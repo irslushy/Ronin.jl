@@ -158,6 +158,33 @@ printstyled("QC_SCAN AVERAGE TIME FOR 10 SCANS: $(mean(times)) seonds \n", color
 
 
 
+horiz_window =  Matrix{Union{Missing, Float64}}(zeros(7,7))
+vert_window =  Matrix{Union{Missing, Float64}}(zeros(7,7))
+
+horiz_window[4,:] .= 1.
+horiz_window[5,:] .= 1.
+horiz_window[3,:] .= 1.
+
+vert_window[:, 4] .= 1.
+vert_window[:, 5] .= 1.
+vert_window[:, 3] .= 1.
+horiz_window_two = horiz_window .* 4
+
+smol_weights = [horiz_window, horiz_window_two]
+
+Dataset(TRAINING_PATH * "/cfrad.19950516_221944.169_to_19950516_221946.124_TF-ELDR_AIR.nc") do currset 
+###Ensure that weight matrix version of calculations are consistent between calculate feature versions 
+    X, Y, idxer = Ronin.process_single_file(currset, "./BENCHMARKING/micro_tasks.txt", HAS_INTERACTIVE_QC=true, REMOVE_HIGH_PGG=true, REMOVE_LOW_NCP=true, 
+                QC_variable="VG", remove_variable="VV", weight_matrixes=smol_weights)
+
+    X2, Y2, idxer2 = Ronin.process_single_file(currset, ["ISO(VV)", "ISO(VV)"], smol_weights, HAS_INTERACTIVE_QC=true, REMOVE_HIGH_PGG=true, REMOVE_LOW_NCP=true, 
+                        QC_variable="VG", remove_variable="VV")
+    @assert X2 == X
+    @assert Y == Y2 
+    @assert X[:, 1] != X[:, 2]
+end 
+
+printstyled("\n\n...ALL TESTS PASSED...\n\n", color=:green)
 
 
 
