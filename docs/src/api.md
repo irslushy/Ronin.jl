@@ -5,6 +5,9 @@ RadarQC is a package that utilizes a methodology developed by [Dr. Alex DesRosie
 
 # API / Function References 
 
+## Model Configuration 
+ModelConfig
+
 ## Calculating Model Input Features  
 
 ```@docs 
@@ -28,7 +31,6 @@ error_characteristics(::String, ::String, ::String)
 ## Predicting using a composite model 
 
 ```@docs 
-ModelConfig
 train_multi_model
 composite_prediction
 multipass_uncertain
