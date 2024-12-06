@@ -281,43 +281,46 @@ function get_task_params(params_file, variablelist; delimiter=",")
     tasks = readlines(params_file)
     task_param_list = String[]
     
-    for line in tasks
-        ###Ignore comments in the parameter file 
-        if line[1] == '#'
-            continue
-        else
-            delimited = split(line, delimiter)
-            for token in delimited
-                ###Remove whitespace and see if the token is of the form ABC(DEF)
-                token = strip(token, ' ')
-                expr_ret = match(func_regex,token)
 
-                if token == ""
-                    printstyled("WARNING: Empty Token in config file... continuing to next token...\n", color=:yellow) 
-                    continue 
-                end 
-                ###If it is, make sure that it is both a valid function and a valid variable 
-                if (typeof(expr_ret) != Nothing)
-                    if (expr_ret[1] ∉ valid_funcs || 
-                        (expr_ret[2] ∉ variablelist && expr_ret[2] ∉ valid_derived_params))
-                        println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
-                        "Potentially invalid function or missing variable\n")
-                    else
-                        ###Add λ to the front of the token to indicate it is a function call
-                        ###This helps later when trying to determine what to do with each "task" 
-                        push!(task_param_list, token)
-                    end 
-                else
-                    ###Otherwise, check to see if this is a valid variable 
-                    if token in variablelist || token ∈ valid_funcs || token ∈ valid_derived_params 
-                        push!(task_param_list, token)
-                    else
-                        printstyled("\"$token\" NOT FOUND IN CFRAD FILE.... POTENTIAL ERROR IN CONFIG FILE\n", color=:red)
-                    end
-                end
-            end
+    full_tasks = ""
+    for itm in tasks
+        if (itm != "") && (itm[1] != "#")
+            full_tasks = full_tasks * "," * strip(itm, ',')
         end 
     end 
+
+    
+    delimited = split(full_tasks, delimiter)
+    for token in delimited
+        ###Remove whitespace and see if the token is of the form ABC(DEF)
+        token = strip(token, ' ')
+        expr_ret = match(func_regex,token)
+
+        if token == ""
+            printstyled("WARNING: Empty Token in config file... continuing to next token...\n", color=:yellow) 
+            continue 
+        end 
+        ###If it is, make sure that it is both a valid function and a valid variable 
+        if (typeof(expr_ret) != Nothing)
+            if (expr_ret[1] ∉ valid_funcs || 
+                (expr_ret[2] ∉ variablelist && expr_ret[2] ∉ valid_derived_params))
+                println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
+                "Potentially invalid function or missing variable\n")
+            else
+                ###Add λ to the front of the token to indicate it is a function call
+                ###This helps later when trying to determine what to do with each "task" 
+                push!(task_param_list, token)
+            end 
+        else
+            ###Otherwise, check to see if this is a valid variable 
+            if token in variablelist || token ∈ valid_funcs || token ∈ valid_derived_params 
+                push!(task_param_list, token)
+            else
+                printstyled("\"$token\" NOT FOUND IN CFRAD FILE.... POTENTIAL ERROR IN CONFIG FILE\n", color=:red)
+            end
+        end
+    end 
+
     return(task_param_list)
 end 
 
@@ -332,32 +335,35 @@ function get_task_params(params_file; delimiter = ',')
     tasks = readlines(params_file)
     task_param_list = String[] 
 
-    for line in tasks
-        ###Ignore comments in the parameter file 
-        if line[1] == '#'
-            continue
-        else
-            delimited = split(strip(line), delimiter)
-            for token in delimited
-                token = strip(token, ' ')
-                if token == ""
-                    continue 
-                end 
-                expr_ret = match(func_regex,token)
-
-                if (typeof(expr_ret) != Nothing)
-                    if (expr_ret[1] ∉ valid_funcs)
-                        println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
-                        "Potentially invalid function or missing variable\n")
-                    else
-                        push!(task_param_list, token)
-                    end 
-                else 
-                    push!(task_param_list, token)                 
-                end 
-            end 
+    full_tasks = ""
+    for itm in tasks
+        if (itm != "") && (itm[1] != "#")
+            full_tasks = full_tasks * "," * strip(itm, ',')
         end 
     end 
+
+
+
+    delimited = split(strip(full_tasks), delimiter)
+    for token in delimited
+        token = strip(token, ' ')
+        if token == ""
+            continue 
+        end 
+        expr_ret = match(func_regex,token)
+
+        if (typeof(expr_ret) != Nothing)
+            if (expr_ret[1] ∉ valid_funcs)
+                println("ERROR: CANNOT CALCULATE $(expr_ret[1]) of $(expr_ret[2])\n", 
+                "Potentially invalid function or missing variable\n")
+            else
+                push!(task_param_list, token)
+            end 
+        else 
+            push!(task_param_list, token)                 
+        end 
+    end 
+
     return task_param_list 
 end 
 
