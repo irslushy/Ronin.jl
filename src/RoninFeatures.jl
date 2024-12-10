@@ -285,7 +285,11 @@ function get_task_params(params_file, variablelist; delimiter=",")
     full_tasks = ""
     for itm in tasks
         if (itm != "") && (itm[1] != "#")
-            full_tasks = full_tasks * "," * strip(itm, ',')
+            if full_tasks == ""
+                full_tasks = strip(itm, ",")
+            else 
+                full_tasks = full_tasks * "," * strip(itm, ',')
+            end 
         end 
     end 
 
@@ -338,7 +342,11 @@ function get_task_params(params_file; delimiter = ',')
     full_tasks = ""
     for itm in tasks
         if (itm != "") && (itm[1] != "#")
-            full_tasks = full_tasks * "," * strip(itm, ',')
+            if full_tasks == ""
+                full_tasks = strip(itm, ",")
+            else 
+                full_tasks = full_tasks * "," * strip(itm, ',')
+            end 
         end 
     end 
 
@@ -468,7 +476,8 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
     NCP_Completed_Flag = false 
     add_weight_matrix = (weight_matrixes != [Matrix{Union{Missing, Float64}}(undef, 0,0)]) & (length(weight_matrixes) == length(tasks))
     ### 
-    if (! add_weight_matrix) & (weight_matrixes != [[Matrix{Union{Missing, Float64}}(undef, 0,0)]])
+    if (! add_weight_matrix) & (weight_matrixes != [Matrix{Union{Missing, Float64}}(undef, 0,0)])
+        print("WEIGHT MATRIXES: $(weight_matrixes)")
         throw("ERROR: Weight matrixes are not default but do not match length of tasks... terminating...")
     end 
     

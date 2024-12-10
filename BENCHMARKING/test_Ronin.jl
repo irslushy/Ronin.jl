@@ -154,7 +154,7 @@ for i in 1:10
     push!(times, round(time() - starttime, sigdigits=4))
 end 
 
-printstyled("QC_SCAN AVERAGE TIME FOR 10 SCANS: $(mean(times)) seonds \n", color=:green)
+printstyled("QC_SCAN AVERAGE TIME FOR 10 SCANS: $(mean(times)) seconds \n", color=:green)
 
 
 
