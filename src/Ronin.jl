@@ -2145,8 +2145,23 @@ module Ronin
     Passes feature data through a model or series of models and returns model classifications. Applies configuration such as 
     masking and basic QC (high PGG/low NCP) specified by `config`
 
-    ### Optional keyword arguments 
+    ### Optional keyword arguments
     ```
+    write_predictions_out::Bool = false 
+    ```
+    If true, will write the predictions to disk 
+
+    ```
+    prediction_outfile::String = "model_predictions.h5"
+    ```
+    Location to write predictions to on disk
+
+    ```
+    return_probs::Bool = false 
+    ```
+    If set to true, will return probability of meteorological gate for all gates. More detail below. 
+    ```
+
     QC_mode::Bool = false 
     ```
     If set to true, the function will instead be used to apply quality control to a (set of) scan(s)
@@ -2164,7 +2179,7 @@ module Ronin
          All values returned will be only those that passed quality control checks in the first pass of the model 
         minimum NCP / PGG thresholds. In order to reconstruct a scan, user would need to use the values in the returned indexers. 
     """
-    function composite_prediction(config::ModelConfig; write_features_out::Bool = false, feature_outfile::String="placeholder.h5", return_probs::Bool=false, QC_mode::Bool=false)
+    function composite_prediction(config::ModelConfig; write_predictions_out::Bool = false, prediction_outfile::String="model_predictions.h5", return_probs::Bool=false, QC_mode::Bool=false)
 
         @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
     
@@ -2338,8 +2353,8 @@ module Ronin
     
         end 
         
-        if write_features_out
-            h5open(feature_outfile, "w") do f 
+        if write_predictions_out
+            h5open(prediction_outfile, "w") do f 
                 write_dataset(f, "Predictions", predictions)
                 write_dataset(f, "Verification", values)
                 #write_dataset(f, "Met_probabilities", met_probs)
