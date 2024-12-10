@@ -286,7 +286,7 @@ function get_task_params(params_file, variablelist; delimiter=",")
     for itm in tasks
         if (itm != "") && (itm[1] != "#")
             if full_tasks == ""
-                full_tasks = strip(itm, ",")
+                full_tasks = strip(itm, ',')
             else 
                 full_tasks = full_tasks * "," * strip(itm, ',')
             end 
@@ -343,7 +343,7 @@ function get_task_params(params_file; delimiter = ',')
     for itm in tasks
         if (itm != "") && (itm[1] != "#")
             if full_tasks == ""
-                full_tasks = strip(itm, ",")
+                full_tasks = strip(itm, ',')
             else 
                 full_tasks = full_tasks * "," * strip(itm, ',')
             end 
