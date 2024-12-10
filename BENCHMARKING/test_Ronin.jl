@@ -24,7 +24,7 @@ placeholder_matrix = allowmissing(ones(3,3))
 
 
 
-center_weight::Float64 = 0
+center_weight::Float64 = Ronin.center_weight
 
 ###Weight matrixes for calculating spatial parameters 
 iso_weights::Matrix{Union{Missing, Float64}} = allowmissing(ones(7,7))
