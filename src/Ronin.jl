@@ -2132,7 +2132,7 @@ module Ronin
     """
     function QC_scan(config::ModelConfig)
 
-        composite_prediction(config, write_features_out=false, QC_mode = true)
+        composite_prediction(config, write_predictions_out=false, QC_mode = true)
 
     end 
 
