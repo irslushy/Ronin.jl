@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1734024213675,
+  "lastUpdate": 1734024429760,
   "repoUrl": "https://github.com/irslushy/Ronin.jl",
   "entries": {
     "Julia benchmark result": [
@@ -30,6 +30,36 @@ window.BENCHMARK_DATA = {
             "value": 847998616,
             "unit": "ns",
             "extra": "gctime=10174691\nmemory=555859160\nallocs=7066748\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "irschluesche@gmail.com",
+            "name": "Isaac Schluesche",
+            "username": "irslushy"
+          },
+          "committer": {
+            "email": "irschluesche@gmail.com",
+            "name": "Isaac Schluesche",
+            "username": "irslushy"
+          },
+          "distinct": true,
+          "id": "57fc5a367bcc330a8f0217af2998a004fa655bad",
+          "message": "Fixed misspellings",
+          "timestamp": "2024-12-12T10:19:26-07:00",
+          "tree_id": "18137a0d208ee88de646af1aa8d1f2d1e92f7e65",
+          "url": "https://github.com/irslushy/Ronin.jl/commit/57fc5a367bcc330a8f0217af2998a004fa655bad"
+        },
+        "date": 1734024428391,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "features/10",
+            "value": 850464617,
+            "unit": "ns",
+            "extra": "gctime=11418263.5\nmemory=555859160\nallocs=7066748\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
