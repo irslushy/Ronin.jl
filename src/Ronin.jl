@@ -2043,6 +2043,7 @@ module Ronin
                 println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
             end 
         end     
+        close(input_set)
     end 
 
     """
@@ -2251,7 +2252,7 @@ module Ronin
                 
                 ###Need to actually pass the QC mask 
                 ###indexer will contain true where gates in the file both were NOT masked out AND met the basic QC thresholds 
-                X, Y, indexer = process_single_file(f, currt, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
+                X, Y, indexer = process_single_file(f, currt, HAS_INTERACTIVE_QC = ((! QC_mode) && config.HAS_INTERACTIVE_QC)
                     , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
                     QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
                     mask_features = QC_mask, feature_mask = feature_mask, weight_matrixes=cw)
@@ -2515,6 +2516,7 @@ module Ronin
                     end 
                     input_set[fieldname][:,:] = NEW_FIELD 
                 else 
+                    close(filepath)
                     throw(e)
                 end 
             end 
