@@ -1609,68 +1609,6 @@ module Ronin
     end 
 
     
-    ###UNTESTED! 
-    function get_QC_mask(file_path::String, config_file_path::String, 
-        model_path::String; indexer_var::String="VV", decision_threshold::Float64 = .5, write_to_file::Bool=true, mask_name::String="QC_MASK")
-
-        new_model = load_object(model_path) 
-
-        paths = Vector{String}() 
-        if isdir(file_path) 
-            paths = parse_directory(file_path)
-        else 
-            paths = [file_path]
-        end 
-        
-
-        for path in paths 
-            ##Open in append mode so output variables can be written 
-            input_cfrad = NCDataset(path, "a")
-            cfrad_dims = (input_cfrad.dim["range"], input_cfrad.dim["time"])
-
-            ###Will generally NOT return Y, but only (X, indexer)
-            ###Todo: What do I need to do for parsed args here 
-            starttime=time()
-            X, Y, indexer = process_single_file(input_cfrad, config_file_path; REMOVE_HIGH_PGG = true, REMOVE_LOW_NCP = true, remove_variable=indexer_var)
-            ##Load saved RF model 
-            ##assume that default SYMBOL for saved model is savedmodel
-            ##For binary classifications, 1 will be at index 2 in the predictions matrix 
-            met_predictions = DecisionTree.predict_proba(new_model, X)[:, 2]
-            predictions = met_predictions .> decision_threshold
-            
-        
-
-            MASK = fill(-1, cfrad_dims)[:]
-            MASK[indexer] = predictions 
-            MASK = reshape(MASK, cfrad_dims)
-
-            try
-                if verbose 
-                    println("Writing Mask")
-                end 
-
-                NEW_FIELD_ATTRS = Dict(
-                "units" => "Unitless",
-                "long_name" => "Ronin Quality Control mask"
-                )   
-                defVar(input_cfrad, mask_name, MASK, ("range", "time"), fillvalue=-1; attrib=NEW_FIELD_ATTRS)
-            catch e
-
-            ###Simply overwrite the variable 
-                if e.msg == "NetCDF: String match to name in use"
-                    if verbose 
-                        println("Already exists... overwriting") 
-                    end 
-                    input_cfrad[mask_name][:,:] =  MASK 
-                else 
-                    close(input_cfrad) 
-                    throw(e)
-                end 
-            end 
-        
-            close(input_cfrad) 
-        end 
-    end 
 
 
 
@@ -2046,77 +1984,6 @@ module Ronin
         close(input_set)
     end 
 
-    """
-    DEPRECATED
-    Version of QC_Scan used for multiple-pass models. 
-    Required argument is a model configuration object.
-    Optional arguments: 
-    ```julia
-    output_probs::Bool = false 
-    ```
-    Whether or not to write the modeled probabilities to file 
-
-    ```julia
-    prob_name::String 
-    ```
-    What to name the probability variable to file 
-    """
-    # function QC_scan(config::ModelConfig; output_probs::Bool = false, prob_name::String = "")
-
-    #     @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
-    
-    #     ###Let's get the files 
-    #     if isdir(config.input_path)
-    #         files = parse_directory(config.input_path)
-    #     else
-    #         files = [config.input_path]
-    #     end 
-    
-    
-    #     ###Load models into memory 
-    
-    #     printstyled("LOADING MODELS....\n", color=:green)
-    #     flush(stdout)
-    #     models = [] 
-    
-    #     for model_path in config.model_output_paths 
-    #         push!(models, load_object(model_path))
-    #     end 
-    
-    #     for file in files
-    
-    #         print("QC-ing $(file)")
-    #         starttime = time() 
-    #         X = ""
-    #         Y= ""
-    #         indexer = ""
-            
-    #         for (i, model_path) in enumerate(config.model_output_paths)
-    
-    #             ###We don't need to write these out, just use them briefly 
-    #             NCDataset(file, "a") do f
-                 
-    
-    #                 if i > 1
-    #                     QC_mask = true
-    #                     data = f[config.mask_name][:,:]
-    #                     feature_mask = Matrix{Bool}( .! map(ismissing,data))
-    #                 else 
-    #                     QC_mask = config.QC_mask 
-    #                     feature_mask = QC_mask ? config.mask_name : [true true; false false]
-    #                 end 
-    #                 ###Need to actually pass the QC mask 
-                    
-    #                 QC_scan(f, models[i], config, i, QC_mask, feature_mask, output_probs=output_probs, prob_name=prob_name)
-
-    #             end 
-    
-    #         end 
-    
-    #         print("FINISHED QC-ing$(file) in $(round(time()-starttime, digits=2))")
-    #     end 
-    
-    # end 
 
 
     """
@@ -2375,6 +2242,18 @@ module Ronin
     end 
 
 
+    """
+        get_contingency(predictions::Vector{Bool}, verificaiton::Vector{Bool}; normalize::Bool = true)
+
+        Utility to return a DataFrame with the contingency matrix for a binary classificaiton model. 
+        ## Required Arguments 
+        * `predictions::Vector{Bool}` Model predicted classes 
+        * `verification::Vector{Bool}` Ground Truth Classes 
+        ## Optional Arguments 
+        * `normalize::Bool = true` Whether or not to return the normalized form of the contingency matrix 
+        ## Return 
+        * `DataFrame` containing contingency matrix 
+    """
     function get_contingency(predictions::Vector{Bool}, verification::Vector{Bool}; normalize::Bool = true)
 
         tpc = count(verification[predictions .== 1] .== 1)
@@ -2407,88 +2286,7 @@ module Ronin
     
     end 
     
-    """
-    PRETTY MUCH DEPRECATED WITH VERSIONS OF RONIN CODE NOVEMBER 2024 and ONWARD 
 
-        multipass_uncertain(base_config::ModelConfig, low_threshold::Float64, high_threshold::Float64; 
-        low_model_path::String = "low_config_model.jld2", skip_training_base=false)
-
-    Function that takes in a set of model parameters, trains a model on the entire dataset, and then
-    isolates gates that trees in the forest have trouble agreeing upon. More specifically, will isolate gates that 
-    have > `low_threshold` but < `high_threshold` fraction of trees in agreement that they are meteorological. It will 
-    subsequently train a random forest model specifically on these gates, saving it to `ambig_model.jld2`
-
-    ## Required Arguments 
-    * `base_config::ModelConfig` Model configuration object that contains information about input data and where to write models to 
-    * `low_threshold::Float64` Used for selecting ambiguous gates, the minimum fraction of trees that must agree for a datapoint to be considered 
-    * `high_threshold::Float64` Used for selecting ambiguous gates, the maximum fraction of trees that may classify a gate as meteorological for it to be considered
-    ## Optional Arguments 
-    * `low_model_path::String="low_config_model.jld2"`` Where to output the base model (trained on all gates) to
-    * `ambig_model_path::String="ambig_model.jld2"` Where to output model trained on difficult gates to 
-    * `skip_training_base::Bool=false` If base model has already been trained, set to `true` to skip retraining 
-    * `mode::String = "train"` Options are "train" or "predict". If mode == "predict", will not do any model training
-
-    ## Returns
-    Will return 3 items: A vector of predictions, a vector of verification data, and an indexer vector which can be used 
-    to determine which gates fall between the low_threshold and high_threshold in the basic model. The prediction vector is a combination 
-    of classifications from the model trained on the base set and the model trained on the difficult gates. 
-
-    """
-    function multipass_uncertain(base_config::ModelConfig, low_threshold::Float64, high_threshold::Float64; 
-        low_model_path::String = "low_config_model.jld2", skip_training_base::Bool=false, mode::String="train")
-    
-        ###Begin by training two models, one with a low threshold for meteorological retention, and one with a high threshold 
-        ###The gates retained in the low threshold have < (1-low_threshold) confidence, and the gates removed in the high_threshold 
-        ###have <= (high_threshold) confidence. This enables us to attack the potentially more ambiguous or uncertain gates 
-    
-        ###do NOT need to train two models, just predict using two different thresholds 
-
-        feature_output_path = base_config.feature_output_paths[1]
-    
-        low_config = ModelConfig(num_models = 1, model_output_paths = [low_model_path], met_probs=[low_threshold], feature_output_paths = [feature_output_path],
-                                input_path = base_config.input_path, input_config=base_config.input_config, file_preprocessed = base_config.file_preprocessed,
-                                class_weights = base_config.class_weights, VARS_TO_QC=base_config.VARS_TO_QC,
-                                verbose = base_config.verbose, REMOVE_LOW_NCP = base_config.REMOVE_LOW_NCP, REMOVE_HIGH_PGG = base_config.REMOVE_HIGH_PGG,
-                                HAS_INTERACTIVE_QC = base_config.HAS_INTERACTIVE_QC, QC_var = base_config.QC_var, remove_var = base_config.remove_var, 
-                                replace_missing = base_config.replace_missing, write_out = base_config.write_out, QC_mask = base_config.QC_mask, mask_name = base_config.mask_name)
-
-        if ! skip_training_base
-            printstyled("PRINTING MODELS", color=:red)
-            train_multi_model(low_config)
-        end 
-        
-        print(low_config)
-        
-        low_predictions, low_verification, low_idxrs, gate_indexer = get_idxer(low_config, low_threshold, high_threshold)
-
-        ##Get balanced class weights 
-        targets_of_interest = low_verification[:][Vector{Bool}(gate_indexer)]
-        class_weights = Vector{Float32}(fill(0,length(targets_of_interest)))
-        weight_dict = compute_balanced_class_weights(targets_of_interest[:])
-        for class in keys(weight_dict)
-            class_weights[targets_of_interest[:] .== class] .= weight_dict[class]
-        end 
-    
-        printstyled("NUMBER OF GATES REMAINING: $(sum(gate_indexer))\n", color=:green)
-        @assert sum(gate_indexer) >0 
-    
-        ###Finally, train a model on only these uncertain gates 
-        println("TRAINING FINAL MODEL")
-        # printstyled("CLASS BALANCE...\n", color=:green)
-        # printstyled("NON MET GATES: $(sum(.! targets_of_interest)/ length(targets_of_interest))\n")
-        # printsytled("MET GATES:     $(sum(targets_of_interest)   / length(targets_of_interest))")
-        flush(stdout)
-        
-        print("TRAINING NEW MODEL") 
-
-        if mode == "train"
-            train_model(feature_output_path, "ambig_model.jld2", row_subset = Vector{Bool}(gate_indexer[:]), class_weights = Vector{Float32}(class_weights))
-        end 
-
-        predictions, verification = predict_with_model("ambig_model.jld2", feature_output_path, probability_threshold = Float32(.5), row_subset = gate_indexer)
-        return((predictions, verification, gate_indexer))
-    
-    end 
 
     """
         write_field(filepath::String, fieldname::String, NEW_FIELD, overwrite::Bool = true, attribs::Dict = Dict(), dim_names::Tuple = ("range", "time"), verbose::Bool=true)
