@@ -2576,7 +2576,7 @@ module Ronin
         if ! config.write_out
             throw("Error: evaluate_model must write features to disk. Please set config.write_out to trues")
         end 
-
+f
         if ! models_trained 
             train_multi_model(config)
         end 
