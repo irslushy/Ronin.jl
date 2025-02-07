@@ -23,9 +23,8 @@ module Ronin
     export parse_directory, get_num_tasks, get_task_params, remove_validation 
     export calculate_features
     export split_training_testing! 
-    export train_model 
     export QC_scan, get_QC_mask
-    export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
+    export evaluate_model, get_feature_importance, error_characteristics
     export train_multi_model, ModelConfig, composite_prediction, get_contingency, compute_balanced_class_weights
     export multipass_uncertain, write_field 
 
@@ -199,7 +198,10 @@ module Ronin
         
     end 
 
+    """ 
+    Helper function to compute balanced weights according to the algoirthm described in https://scikit-learn.org/stable/modules/generated/sklearn.utils.class_weight.compute_class_weight.html
 
+    """
     function compute_balanced_class_weights(samples::Vector{<:Real})
         classes = unique(samples)
         n_classes = length(classes)
@@ -608,211 +610,7 @@ module Ronin
     end 
 
 
-    """
-
-    Function to train a random forest model using a precalculated set of input and output features (usually output from 
-    `calculate_features`). Returns nothing. 
-
-    # Required arguments 
-    ```julia
-    input_h5::String
-    ```
-    Location of input features/targets. Input features are expected to have the name "X", and targets the name "Y". This should be 
-    taken care of automatically if they are outputs from `calculate_features`
-
-    ```julia
-    model_location::String 
-    ```
-    Path to save the trained model out to. Typically should end in `.jld2`
-    
-    # Optional keyword arguments 
-    ```julia
-    verify::Bool = false 
-    ```
-    Whether or not to output a separate .h5 file containing the trained models predictions on the training set 
-    (`Y_PREDICTED`) as well as the targets for the training set (`Y_ACTUAL`) 
-
-    ```julia
-    verify_out::String="model_verification.h5"
-    ```
-    If `verify`, the location to output this verification to. 
-
-    ```julia
-    col_subset=: 
-    ```
-    Set of columns from `input_h5` to train model on. Useful if one wishes to train a model while excluding some features from a training set. 
-    
-    ```julia
-    row_subset=:
-    ```
-    Set of rows from `input_h5` to train on.
-
-    ```julia
-    n_trees::Int = 21
-    ```
-    Number of trees in the Random Forest ensemble 
-
-    ```julia
-    max_depth::Int = 14
-    ```
-    Maximum node depth in each tree in RF ensemble 
-
-    ```julia
-    class_weights::Vector{Float32} = Vector{Float32}([1.,2.])
-    ```
-    Vector of class weights to apply to each observation. Should be 1 observation per sample in the input data files 
-    """
-    function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5", col_subset=:, row_subset=:,
-                        n_trees::Int = 21, max_depth::Int=14, class_weights::Vector{Float32} = Vector{Float32}([1.,2.]))
-
-        ###Load the data
-        radar_data = h5open(input_h5)
-        printstyled("\nOpening $(radar_data)...\n", color=:blue)
-        ###Split into features
-
-        X = read(radar_data["X"])[row_subset , col_subset]
-        Y = read(radar_data["Y"])[:][row_subset]
-
-        model = DecisionTree.RandomForestClassifier(n_trees=n_trees, max_depth=max_depth, rng=50)
-    
-        # if balance_weight 
-        #     counts = [sum(.! Vector{Bool}(Y[:])), sum(Vector{Bool}(Y[:]))]
-        #     dub = 2 * counts
-        #     weights = [sum(counts[1] ./ dub), sum(counts[2] ./ dub)]
-        #     class_weights = [target ? weights[1] : weights[2] for target in Vector{Bool}(Y[:])]
-           
-        # else
-        #     class_weights = ones(length(Y[:]))
-        # end 
-
-
-        if ! (length(Y) == length(class_weights))
-            printstyled("WARNING: class_weights of different length than targets.... Continiuing with no class weights...\n", color=:yellow)
-            class_weights = ones(length(Y))
-        end 
-
-        println("FITTING MODEL")
-        startTime = time() 
-        DecisionTree.fit!(model, X, reshape(Y, length(Y),), class_weights)
-
-        println("COMPLETED FITTING MODEL IN $((time() - startTime)) seconds")
-        println() 
-
-
-        println("MODEL VERIFICATION:")
-        predicted_Y = DecisionTree.predict(model, X) 
-        accuracy = sum(predicted_Y .== Y) / length(Y)
-        println("ACCURACY ON TRAINING SET: $(round(accuracy * 100, sigdigits=3))%")
-        println()
-
-
-        printstyled("SAVING MODEL TO: $(model_location) \n", color=:green) 
-        save_object(model_location, model)
-
-        if (verify) 
-            ###NEW: Write out data to HDF5 files for further processing
-            println("WRITING VERIFICATION DATA TO $(verify_out)" )
-            fid = h5open(verify_out, "w")
-            HDF5.write_dataset(fid, "Y_PREDICTED", predicted_Y)
-            HDF5.write_dataset(fid, "Y_ACTUAL", Y)
-            close(fid) 
-        end 
-
-        close(radar_data) 
-    end     
-
-    # """
-    # Helper function that returns a Vector{Float32} of weights for a given number of targets
-    # in a classification problem. 
-
-    # # Required arguments: 
-    # ```julia
-    # filepath::String 
-    # ```
-    # Location of input h5 file containing information about targets of classification problem 
-
-    # ```julia
-    # target_name::String 
-    # ```
-    # Name of target variable in input h5 file 
-    # """
-    # function get_balanced_weights(filepath::String, target_name::String) 
-
-    #     h5open(filepath) do f
-    #         targets = f[target_name][:,:][:]
-
-    #         counts = [sum(.! Vector{Bool}(targets)), sum(Vector{Bool}(Y[:]))]
-    #         dub = 2 * counts
-    #         weights = [sum(counts[1] ./ dub), sum(counts[2] ./ dub)]
-    #         class_weights = [target ? weights[1] : weights[2] for target in Vector{Bool}(Y[:])]
-
-    #     end 
-
-    # end 
-
-    """
-    Simple function that opens a given h5 file with feature data and applies a specific model to it. 
-    Returns a tuple of `predictions, targets`. Also contains the ability to write these predictions and solutions 
-    out to a separate h5 file. 
-
-    # Required arguments 
-    ```julia
-    model_path::String 
-    ```
-    Location of trained RF model (saved in jld2 file format) 
-
-    ```julia
-    input_h5::String 
-    ```
-    Location of h5 file containing input features. 
-
-    # Optional Keyword Arguments 
-    ```julia 
-    write_out::Bool = false
-    ```
-    Whether or not to write the results out to a file 
-
-    ```julia
-    outfile::String = Path to write results to if write_out == true 
-    ```
-    Results will be written in the h5 format with the name "Predicitions" and "Ground Truth" 
-
-    ```julia
-    probability_threshold::Float32 = .5
-    ```
-    Minimum fraction of trees classifying a gate as meteorological for it to be assigned a label of meteorological
-
-    ```julia
-    row_subset=:
-    ```
-    Selection of rows to predict upon 
-
-    """
-    function predict_with_model(model_path::String, input_h5::String; write_out::Bool=false, outfile::String="_.h5",
-                                probability_threshold::Float32 = Float32(.5), row_subset=:)
-        
-        printstyled("\nLOADING MODEL...\n", color=:green)
-        flush(stdout) 
-        new_model = load_object(model_path) 
-
-        input_h5 = h5open(input_h5)
-        X = input_h5["X"][:,:][row_subset,:]
-        Y = input_h5["Y"][:,:][:][row_subset]
-        close(input_h5)
-
-        met_probs = DecisionTree.predict_proba(new_model, X)[:, 2]
-        predictions  = met_probs .>= probability_threshold
-
-        if write_out 
-            h5open(outfile, "w") do f
-                f["Predictions"] = predictions 
-                f["Ground Truth"] = Y
-            end 
-        end 
-
-        return((predictions, Y))
-    end 
-
+  
     ###TODO: Fix arguments etc 
     ###Can have one for a single file and one for a directory 
     """
@@ -1205,138 +1003,7 @@ module Ronin
 
     end 
 
-    """
-
-    Function that takes in a given model, directory containing either cfradials or an already processed h5 file, 
-    a path to the configuration file, and a mode type ("C" for cfradials "H" for h5) and returns a Julia DataFrame 
-    containing a variety of metrics about the model's performance on the specified set, including precision and recall scores. 
-
-    # Required arguments 
-    ```julia
-    model_path::String
-    ```
-
-    Path to input trained random forest model
-
-    ```julia
-    input_file_dir::String
-    ```
-
-    Path to input h5 file or directory of cfradial files to be processed
-
-    ```julia
-    config_file_path 
-    ```
-    
-    Path to configuration file containing information about what features to calculate 
-
-    # Optional Arguments 
-    
-    ```julia
-    mode::String = "C"
-    ```
-    Whether to process a directory of cfradial files ("C" mode) or simply utilize an already-processed h5 file ("H" mode) 
-
-    ```julia
-    write_out::Bool = false
-    ```
-    If in "C" mode, whether or not to write the resulting calculated features out to a file 
-
-    ```julia
-    output_file::String = "_.h5" 
-    ```
-    Location to write calculated output features to. 
-
-    ```julia
-    col_subset = : 
-    ```
-    Subset of columns of `X` array to input to model. 
-
-    Also contains all keyword arguments for calculate_features 
-    
-    ```julia 
-    proba_seq::StepRangeLen = .1:.1:.9
-    ```
-    Sequence of probabilities to iterate through when evaluating the model 
-    
-    """
-    function evaluate_model(model_path::String, input_file_dir::String, config_file_path::String; mode="C",
-        HAS_INTERACTIVE_QC=false, verbose=false, REMOVE_LOW_NCP=false, REMOVE_HIGH_PGG=false, 
-        QC_variable="VG", remove_variable = "VV", replace_missing = false, output_file = "_.h5", write_out=false, col_subset=:, proba_seq::StepRangeLen = .1:.1:.9)
-
-        model = load_object(model_path) 
-
-        if mode == "C"
-
-            if (!HAS_INTERACTIVE_QC)
-                Exception("ERROR: PLEASE SET HAS_INTERACTIVE_QC TO TRUE, AND SPECIFY QC_VARIABLE")
-            end 
-
-            X, Y = calculate_features(input_file_dir, config_file_path, output_file, HAS_INTERACTIVE_QC 
-                            ; verbose=verbose, REMOVE_LOW_NCP=REMOVE_LOW_NCP, REMOVE_HIGH_PGG=REMOVE_HIGH_PGG, 
-                            QC_variable=QC_variable, remove_variable=remove_variable, replace_missing=replace_missing,
-                            write_out=write_out)
-
-            
-            probs = DecisionTree.predict_proba(model, X) 
-
-        elseif mode == "H"
-
-            input_h5 = h5open(input_file_dir)
-
-            X = input_h5["X"][:,col_subset]
-            Y = input_h5["Y"][:,:]
-
-            close(input_h5) 
-
-            probs = DecisionTree.predict_proba(model, X) 
-
-        else 
-            print("ERROR: UNKNOWN MODE")
-        end 
-
-        ###Now, iterate through probabilities and calculate predictions for each one. 
-        met_probs = probs[:, 2]
-
-
-        list_names = ["prob_level", "true_pos", "false_pos", "true_neg", "false_neg", "prec", "rec", "removal"]
-        for name in (Symbol(_) for _ in list_names)
-            @eval $name = []
-        end 
-
-        for prob in proba_seq
-
-            met_predictions = met_probs .>= prob 
-            print(length(met_predictions))
-            print(length(Y))
-            tpc = count(Y[met_predictions .== 1] .== met_predictions[met_predictions .== 1])
-            fpc = count(Y[met_predictions .== 1] .!= met_predictions[met_predictions .== 1])
-
-            push!(true_pos, tpc)
-            push!(false_pos, fpc)
-
-            tnc =  count(Y[met_predictions .== 0] .== met_predictions[met_predictions .== 0])
-            fnc =  count(Y[met_predictions .== 0] .!= met_predictions[met_predictions .== 0])
-
-            push!(true_neg, tnc)
-            push!(false_neg, fnc) 
-
-            push!(prob_level, prob) 
-
-            push!(prec, tpc / (tpc + fpc) )
-            push!(rec,  tpc / (tpc + fnc) )
-
-            ###Removal is the fraction of true negatives of total negatives 
-            push!(removal, tnc / (tnc + fpc))
-
-            ###I can likely make this better using some metaprogramming but it's fine for now 
-
-        end 
-
-        return(DataFrame(prob_level=prob_level, true_pos=true_pos, false_pos=false_pos, true_neg=true_neg, false_neg=false_neg, precision=prec,
-                recall=rec, removal=removal ))
-     end 
-
+  
 
 
     function standardize(column)
@@ -1919,6 +1586,27 @@ module Ronin
                 
     end     
 
+
+    """
+        QC_scan(config::ModelConfig)
+
+    Applies trained composite model to data within scan or set of scans. Will set gates the 
+    model deems to be non-meteorological to MISSING, including gates that do not meet 
+    initial basic quality control thresholds. Essentially just a wrapper around composite_prediction. 
+
+
+    Returns: None
+
+
+    """
+    function QC_scan(config::ModelConfig)
+
+        composite_prediction(config, write_predictions_out=false, QC_mode = true)
+
+    end 
+
+
+
     """
         QC_scan(config::ModelConfig, filepath::String, predictions::Vector{Bool}, init_idxer::Vector{Bool})
 
@@ -1986,24 +1674,7 @@ module Ronin
 
 
 
-    """
-        QC_scan(config::ModelConfig)
-
-    Applies trained composite model to data within scan or set of scans. Will set gates the 
-    model deems to be non-meteorological to MISSING, including gates that do not meet 
-    initial basic quality control thresholds. Essentially just a wrapper around composite_prediction. 
-
-
-    Returns: None
-
-
-    """
-    function QC_scan(config::ModelConfig)
-
-        composite_prediction(config, write_predictions_out=false, QC_mode = true)
-
-    end 
-
+  
 
 
 
@@ -2091,7 +1762,8 @@ module Ronin
             curr_Y = Vector{Bool}(undef, 0)
             final_predictions = Vector{Bool}(undef, 0)
             curr_probs = fill(-1.0, scan_dims[:])
-    
+
+            ###For multi-pass models, iteratively construct predictions vector by applying models one at a time 
             for (i, model_path) in enumerate(config.model_output_paths)
                 
 
@@ -2113,7 +1785,6 @@ module Ronin
                 if QC_mask
                     feature_mask = Matrix{Bool}(.! map(ismissing, f[mask_name]))
                 else 
-                    QC_mask = false 
                     feature_mask = [true true; false false]
                 end 
                 
@@ -2372,7 +2043,7 @@ module Ronin
         ##Things we want to have here: task paths 
 
         if ! config.write_out
-            throw("Error: evaluate_model must write features to disk. Please set config.write_out to trues")
+            throw("Error: evaluate_model must write features to disk. Please set config.write_out to true")
         end 
 
         if ! models_trained 
