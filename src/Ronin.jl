@@ -61,10 +61,11 @@ module Ronin
     ```
     Directory containing input radar data 
 
-    ```julia
-    input_config::String 
+    ```julia 
+    task_mode::String
     ```
-    Path to file containing feature variables to calculate 
+    Whether to obtain feature tasks from a set of input files or user specified vector of strings. Planned to be implemented in a future release.
+    For now, codebase behavior is agnostic to its value.  
 
     ```julia
     file_preprocessed::Vector{Bool}
@@ -73,6 +74,20 @@ module Ronin
     will open the file at this path instead of re-calculating input features. 
 
     # Optional arguments 
+
+    ## Input tasks and weights
+    ## The following arguments are only quasi-optional, one of them must be set.
+    ``` task_paths::Vector{String} = [""]
+        task_list::Vector{String} = [""]
+        task_weights::Vector{Vector} = [[Matrix{Union{Float64, Missing}}(undef, 0,0)]]
+    ```
+        Currently only `task_paths` are supported. Contains a vector of the same length as the number of 
+        models, with each entry being the path to a file contianing the tasks for the pass. Future plans involve 
+        allowing a usesr to specify vectors of tasks in `task_list`. 
+
+        `task_weights` must be a vector of vectors, with the first dimension the same length as the number of models in the 
+        chain. The second dimension much either be 1, containing the default weight matrix `Matrix{Union{Float64, Missing}}(undef, 0,0)`, 
+        or a secondary vector of matrixes - one matrix for each task in the passs. Sample weight matrixes are defined in RoninConstants.jl
         
     ```julia
     verbose::Bool = true 
@@ -103,7 +118,10 @@ module Ronin
     remove_var::String = "VV" 
     ```
     Name of a raw variable in the radar data that can be used to determine the location of missing gates 
-
+    ```julia 
+    FILL_VAL::Float64 = RoninConstants.FILL_VAL
+    ```
+    Fill value for output cfradials 
     ```julia
     replace_missing::Bool = false 
     ```
@@ -121,9 +139,12 @@ module Ronin
     More details elsewhere in the documentation. 
 
     ```julia
-    mask_name::String = ""
+    mask_names::Vector{String} = [""]
     ```
-    See above 
+    List of names for masks in the model. Must be of same length as number of models in the chain. 
+    In the case of a model with `QC_mask` set to `true`, the first mask name in this vector should contain 
+    a string denoting the name of a field in all cfradial files that is dimensioned the same as the radar sweeps 
+    and contains values of missing where data is not to be considred, and values of float otherwise. 
 
     ```julia
     VARS_TO_QC::Vector{String} = ["VV", "ZZ"]
@@ -179,6 +200,7 @@ module Ronin
         HAS_INTERACTIVE_QC::Bool = false 
         QC_var::String = "VG"
         remove_var::String = "VV" 
+        FILL_VAL::Float64 = FILL_VAL 
         replace_missing::Bool = false 
         write_out::Bool = true 
         QC_mask::Bool = false 
@@ -194,7 +216,6 @@ module Ronin
         max_depth::Int=14
 
         overwrite_output::Bool = false 
-        FILL_VAL::Float64 = FILL_VAL 
         
     end 
 
@@ -1419,7 +1440,11 @@ module Ronin
         printstyled("\n COMPLETED TRAINING MODEL IN $(round(time() - full_start_time, digits = 3)) seconds...\n", color=:green)   
     end 
     
-    
+    """
+    `QC_scan(input_cfrad::String, features::Matrix{Float64}, indexer::Vector{Bool}, config::ModelConfig, iter::Int64)`
+
+
+    """
     function QC_scan(input_cfrad::String, features::Matrix{Float64}, indexer::Vector{Bool}, config::ModelConfig, iter::Int64)
         
         input_set = NCDataset(input_cfrad, "a") 
@@ -1486,114 +1511,12 @@ module Ronin
                 
     end 
 
-
-    function QC_scan(input_set::NCDataset, new_model, config::ModelConfig, iter::Int64, QC_mask::Bool, feature_mask::Matrix{Bool}; 
-                        output_probs::Bool = false, prob_name::String = "")
-            
-        starttime=time() 
-
-        features, Y, indexer = process_single_file(input_set, config.input_config, HAS_INTERACTIVE_QC = config.HAS_INTERACTIVE_QC
-        , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
-        QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
-        mask_features = QC_mask, feature_mask = feature_mask) 
-    
-    
-        decision_threshold = config.met_probs[iter] 
-        cfrad_dims = (input_set.dim["range"], input_set.dim["time"])
-        
-        VARIABLES_TO_QC = config.VARS_TO_QC
-        met_predictions = DecisionTree.predict_proba(new_model, features)[:, 2]
-        predictions = (met_predictions .> decision_threshold[1]) .& (met_predictions .<= decision_threshold[2])
-        
-        if output_probs
-
-            if haskey(input_set, prob_name)
-
-                NEW_FIELD = missings(Float64, cfrad_dims)[:]
-                NEW_FIELD[indexer] = met_predictions
-                NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
-                idxer_2d = reshape(indexer, cfrad_dims)
-                input_set[prob_name][idxer_2d] .= predictions 
-
-            else
-                NEW_FIELD = missings(Float64, cfrad_dims)[:]
-                NEW_FIELD[indexer] = met_predictions
-                NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
-
-                NEW_FIELD_ATTRS = Dict(
-                "units" => "Fraction of Decision Trees",
-                "long_name" => "Probability of meteorological gate represented as fraction of       
-                                Decision Trees classifying it as meteorological."
-            )
-                
-                defVar(input_set, prob_name, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
-
-            end 
-
-        end 
-        ##QC each variable in VARIALBES_TO_QC
-        for var in VARIABLES_TO_QC
-    
-            ##Create new field to reshape QCed field to 
-            NEW_FIELD = missings(Float64, cfrad_dims) 
-            ##Only modify relevant data based on indexer, everything else should be fill value 
-            QCED_FIELDS = input_set[var][:][indexer]
-    
-            NEW_FIELD_ATTRS = Dict(
-                "units" => input_set[var].attrib["units"],
-                "long_name" => "Random Forest Model QC'ed $(var) field"
-            )
-    
-            ##Set MISSINGS to fill value in current field
-            
-            initial_count = count(.!map(ismissing, QCED_FIELDS))
-            ##Apply predictions from model 
-            ##If model predicts 1, this indicates a prediction of meteorological data 
-            QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : missing, enumerate(QCED_FIELDS))
-            final_count = count(.!map(ismissing, QCED_FIELDS))
-            
-            
-            ###Need to reconstruct original 
-            NEW_FIELD = NEW_FIELD[:]
-            NEW_FIELD[indexer] = QCED_FIELDS
-            NEW_FIELD = reshape(NEW_FIELD, cfrad_dims)
-    
-            try 
-                defVar(input_set, var * config.QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = FILL_VAL; attrib=NEW_FIELD_ATTRS)
-            catch e
-                print("INPUT_SET $(typeof(input_set)), VAR: $(typeof(var))")
-                ###Simply overwrite the variable 
-                if e.msg == "NetCDF: String match to name in use"
-                    if config.verbose
-                        println("Already exists... overwriting") 
-                    end 
-                    input_set[var*config.QC_SUFFIX][:,:] = NEW_FIELD 
-                else 
-                    throw(e)
-                end 
-            end 
-    
-            if config.verbose
-                println("\r\nCompleted in $(time()-starttime ) seconds")
-                println()
-                printstyled("REMOVED $(initial_count - final_count) PRESUMED NON-METEORLOGICAL DATAPOINTS\n", color=:green)
-                println("FINAL COUNT OF DATAPOINTS IN $(var): $(final_count)")
-            end 
-    
-        end 
-    
-        close(input_set) 
-                
-    end     
-
-
     """
         QC_scan(config::ModelConfig)
 
     Applies trained composite model to data within scan or set of scans. Will set gates the 
     model deems to be non-meteorological to MISSING, including gates that do not meet 
-    initial basic quality control thresholds. Essentially just a wrapper around composite_prediction. 
-
+    initial basic quality control thresholds. Wrapper around composite_prediction. 
 
     Returns: None
 
@@ -1612,6 +1535,8 @@ module Ronin
 
         Internal function to apply QC to a scan specified by `filepath` using the predictions/indexer specified 
         by `predictions` and `init_idxer`. Generally used in the context of a multi-pass model. 
+
+        `config::ModelConfig`
     """
     function QC_scan(config::ModelConfig, filepath::String, predictions::Vector{Bool}, init_idxer::Vector{Bool})
 
@@ -1646,11 +1571,9 @@ module Ronin
              NEW_FIELD = Matrix{Union{Missing, Float32}}(reshape(NEW_FIELD, sweep_dims))
 
             try 
-                print("THING: $(var * config.QC_SUFFIX)")
                 defVar(input_set, var * config.QC_SUFFIX, NEW_FIELD, ("range", "time"), fillvalue = config.FILL_VAL; attrib=NEW_FIELD_ATTRS)
             catch e
                 print(e)
-                print("INPUT_SET $(typeof(input_set)), $(typeof(NEW_FIELD)), VAR: $(typeof(var))")
                 ###Simply overwrite the variable 
                 if e.msg == "NetCDF: String match to name in use"
                     if config.verbose
