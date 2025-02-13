@@ -368,10 +368,20 @@ Whether or not to ignore gates that do not meet a minimum NCP/SQI threshold. If 
 set to `false` in `indexer`, and features/verification will not be calculated for them. 
 
 ```julia 
+NCP_THRESHOLD::Float32 = .2
+```
+Theshold at or below which to remove data 
+
+```julia 
 REMOVE_HIGH_PGG::Bool = false
 ```
 Whether or not to ignore gates that exceed a given Probability of Ground Gate(PGG) threshold. If `true`, these gates will be
 set to `false` in `indexer`, and features/verification will not be calculated for them. 
+
+```julia
+PGG_THRESHOLD
+```
+Threshold at or above which to remove data 
 
 ```julia 
 QC_variable::String = "VG"
@@ -403,8 +413,8 @@ For spatial parameters, whether or not to replace `missings` values with `FILL_V
                 where in the scan features valid data and where does not. 
 """
 function process_single_file(cfrad::NCDataset, argfile_path::String; 
-    HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
-     QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false,
+    HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, NCP_threshold::Float = .2, REMOVE_HIGH_PGG::Bool = false,
+    PGG_THRESHOLD::Float32 = 1.,  QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false,
     mask_features::Bool = false, feature_mask::Matrix{Bool} = [true true ; false false;], 
         weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}= [Matrix{Union{Missing, Float64}}(undef, 0,0)])
 
@@ -854,168 +864,6 @@ function process_single_file_original(cfrad::NCDataset, argfile_path::String;
     end
 end 
 
-    ##Applies function given by func to the weighted version of the matrix given by var 
-    ##Also applies controls for missing variables to both weights and var 
-    ##If there are Missing values in either the variable or the weights, they will be ignored 
-    
-    #precompile(_weighted_func, (AbstractMatrix{}, Matrix{}))
 
-
-# """
-#     Likely unstable! Don't use for operations yet 
-# """
-# function process_single_file_threaded(cfrad::NCDataset, argfile_path::String; 
-#     HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false,
-#         QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false)
-
-   
-#     if replace_missing
-#         global REPLACE_MISSING_WITH_FILL = true 
-#     else 
-#         global REPLACE_MISSING_WITH_FILL = false 
-#     end 
-
-#     valid_vars = keys(cfrad)
-#     tasks = get_task_params(argfile_path, valid_vars)
-    
-    
-#     ###Features array 
-#     X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
-
-#     ###Array to hold PGG for indexing  
-#     PGG = Matrix{Float64}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
-
-#     PGG_Completed_Flag = "PGG" in tasks  
-#     NCP_Completed_Flag = "NCP" in tasks 
-#     ##To support threading, and because things may occur in a nonstandard order due to scheduling, 
-#     ##threaded function returns dictionary of ["task" => vals]. Then, merge dictionaries and loop through tasks one more time 
-#     ##Tasks should already be ensured to be valid given the get_task_params function 
-    
-#     master_dict = Dict() 
-
-#     ###Let's try beginning by copying the input data from the input netCDF
-
-#     # data_arrs = [] 
-#     # functype = [] 
-
-#     # for task in tasks
-
-#     #     regex_match = match(func_regex, task)
-
-#     #     if (!isnothing(regex_match))
-
-#     #         func = Symbol(func_prefix * lowercase(regex_match[1]))
-#     #         var = regex_match[2]
-
-#     #         push!(data_arrs, copy(cfrad[var]))
-#     #         push!(functype, "D")
-
-#     #     else if (task in valid_derived_params)
-
-
-#     dict_list = fetch.([Threads.@spawn process_task_thrd(task, cfrad) for task in collect(tasks)])
-
-#     for dict in dict_list
-#         master_dict = merge(master_dict, dict) 
-#     end 
-
-#     for (i, task) in enumerate(tasks)
-#         X[:, i] = master_dict[task]
-#     end 
-    
-#     starttime = time() 
-
-#     VT = cfrad[remove_variable][:]
-#     INDEXER = [ismissing(x) ? false : true for x in VT]
-  
-#     starttime=time()
-
-#     if (REMOVE_LOW_NCP)
-#         if (NCP_Completed_Flag) 
-#             INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
-#         else 
-#             NCP = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_ncp(cfrad)[:]]
-#             INDEXER[INDEXER] = [ x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
-#         end 
-#     end
-
-#     if (REMOVE_HIGH_PGG)
-        
-#         if (PGG_Completed_Flag)
-#             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
-#         else
-#             PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
-#             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
-#         end
-
-#     end
-    
-#     X = X[INDEXER, :] 
-
-    
-#     ###Allows for use with already QC'ed files to output a Y array for 
-#     ###model training 
-#     if HAS_INTERACTIVE_QC
-
-#         #println("Parsing METEOROLOGICAL/NON METEOROLOGICAL data")
-#         startTime = time() 
-#         ###try catch block here to see if the scan has INTERACTIVE QC
-#         ###Filter the input arrays first 
-#         VG = cfrad[QC_variable][:][INDEXER]
-#         VV = cfrad[remove_variable][:][INDEXER]
-
-#         Y = reshape([ismissing(x) ? 0 : 1 for x in VG .- VV][:], (:, 1))
-#         calc_length = time() - startTime
-
-#         return(X, Y, INDEXER)
-#     else
-
-#         return(X, false, INDEXER)
-#     end 
-
-# end 
-
-# function ok(data) 
-#     return data[1,1]
-# end 
-
-# function threading_test(input_set::NCDataset)
-#     results = fetch.([Threads.@spawn ok(data["DBZ"][:,:]) for i in 1:4])
-# end 
-
-
-# ###Processes given task and returns flattened array 
-# function process_task_thrd(task, cfrad)
-
-#     regex_match = match(func_regex, task) 
-        
-#     if (!isnothing(regex_match))
-
-#             startTime = time() 
-
-#             func = Symbol(func_prefix * lowercase(regex_match[1]))
-#             var = regex_match[2]
-#             curr_val = @eval $cfrad[$var] 
-        
-#         raw = @eval $func($curr_val[:,:])[:]
-#         filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
-        
-#         any(isnan, filled) ? throw("NAN ERROR") : 
-
-#         return(Dict(task => filled[:]))
-
-#     elseif (task in valid_derived_params)
-
-#         func = Symbol(func_prefix * lowercase(task))
-#         raw = @eval $func($cfrad)[:]
-#         return(Dict(task => [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]))
-
-    
-# #     ###Otherwise it's just a variable from the cfrad 
-#     else 
-#         return(Dict(task => [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]))
-#     end 
-
-# end 
 
 

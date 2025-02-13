@@ -175,6 +175,17 @@ module Ronin
     overwrite_output::Bool = false
     ```
     If true, will remove/overwrite existing files when internal functionality attempts to write new data to them 
+
+    ```julia 
+    NCP_THRESHOLD::Float32 = .2
+    ```
+    If REMOVE_LOW_NCP is set to true, threshold at or below which to remove data. 
+
+    ```julia 
+    PGG_THRESHOLD::Float32 = 1.
+    ```
+    If REMOVE_HIGH_PGG is set to true, threshold at or above which to remove data. 
+    
     """
     Base.@kwdef mutable struct ModelConfig
 
@@ -216,6 +227,9 @@ module Ronin
         max_depth::Int=14
 
         overwrite_output::Bool = false 
+
+        NCP_threshold = .2 
+        PGG_threshold = 1.  
         
     end 
 
@@ -283,10 +297,20 @@ module Ronin
 
     If true, will ignore gates with Normalized Coherent Power/Signal Quality Index below a threshold specified in RQCFeatures.jl
 
+    ```julia 
+    NCP_THRESHOLD::Float32 = .2
+    ```
+    Theshold at or below which to remove data 
+
     ```julia
     REMOVE_HIGH_PGG::Bool=false
     ```
     If true, will ignore gates with Probability of Ground Gate (PGG) values at or above a threshold specified in RQCFeatures.jl 
+
+    ```julia
+    PGG_THRESHOLD
+    ```
+    Threshold at or above which to remove data 
 
     ```julia
     QC_variable::String="VG"
@@ -323,7 +347,8 @@ module Ronin
         weights are discarded, and so dummy/placeholder matrixes may be used. 
     """
     function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_INTERACTIVE_QC::Bool; 
-        verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, REMOVE_HIGH_PGG::Bool = false, QC_variable::String = "VG", remove_variable::String = "VV", 
+        verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, NCP_THRESHOLD::Float32 = .2, REMOVE_HIGH_PGG::Bool = false, PGG_THRESHOLD::Float32=1.,
+         QC_variable::String = "VG", remove_variable::String = "VV", 
         replace_missing::Bool = false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String = "", return_idxer::Bool=false, 
         weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}= [Matrix{Union{Missing, Float64}}(undef, 0,0)])
 
@@ -363,14 +388,14 @@ module Ronin
                     ###We wish to calculate features on where the mask is NON MISSING 
                     currmask = Matrix{Bool}(.! map(ismissing, cfrad[mask_name][:,:]))
                     (newX, newY, newIdx) = process_single_file(cfrad, argument_file; 
-                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
-                                                REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
+                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, NCP_THRESHOLD = NCP_THRESHOLD, 
+                                                REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, PGG_THRESHOLD=PGG_THRESHOLD, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing, feature_mask = currmask, mask_features = true, weight_matrixes=weight_matrixes)
                     
                 else 
                     (newX, newY, newIdx) = process_single_file(cfrad, argument_file; 
-                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
-                                                REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
+                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, NCP_THRESHOLD = NCP_THRESHOLD, 
+                                                REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, PGG_THRESHOLD=PGG_THRESHOLD, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing, weight_matrixes=weight_matrixes)
                 end 
 
@@ -488,12 +513,22 @@ module Ronin
     ```
 
     If true, will ignore gates with Normalized Coherent Power/Signal Quality Index below a threshold specified in RQCFeatures.jl
+    
+    ```julia 
+    NCP_THRESHOLD::Float32 = .2
+    ```
+    Theshold at or below which to remove data 
 
     ```julia
     REMOVE_HIGH_PGG::Bool = false
     ```
 
     If true, will ignore gates with Probability of Ground Gate (PGG) values at or above a threshold specified in RQCFeatures.jl 
+    
+    ```julia
+    PGG_THRESHOLD
+    ```
+    Threshold at or above which to remove data 
 
     ```julia
     QC_variable::String = "VG"
@@ -519,7 +554,7 @@ module Ronin
     """
     function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
         ,output_file::String, HAS_INTERACTIVE_QC::Bool; verbose::Bool=false,
-         REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable::String = "VG", remove_variable::String = "VV", 
+         REMOVE_LOW_NCP = false, NCP_THRESHOLD::Float32 = .2, REMOVE_HIGH_PGG = false, PGG_THRESHOLD::Float32=1., QC_variable::String = "VG", remove_variable::String = "VV", 
          replace_missing::Bool=false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String="", return_idxer::Bool =false)
 
         ##If this is a directory, things get a little more complicated 
@@ -559,14 +594,14 @@ module Ronin
 
                     currmask = Matrix{Bool}(.! map(ismissing, cfrad[mask_name][:,:]))
                     (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
-                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
-                                                REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
+                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, NCP_THRESHOLD = NCP_THRESHOLD,
+                                                REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, PGG_THRESHOLD = PGG_THRESHOLD, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing, feature_mask = currmask, mask_features = true)
                     
                 else 
                     (newX, newY, indexer) = process_single_file(cfrad, tasks, weight_matrixes; 
-                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, 
-                                                REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, QC_variable = QC_variable, remove_variable = remove_variable, 
+                                                HAS_INTERACTIVE_QC = HAS_INTERACTIVE_QC, REMOVE_LOW_NCP = REMOVE_LOW_NCP, NCP_THRESHOLD=NCP_THRESHOLD,
+                                                REMOVE_HIGH_PGG = REMOVE_HIGH_PGG, PGG_THRESHOLD=PGG_THRESHOLD, QC_variable = QC_variable, remove_variable = remove_variable, 
                                                 replace_missing=replace_missing)
                 end 
 
@@ -629,6 +664,121 @@ module Ronin
         end 
 
     end 
+
+
+
+    """
+
+    Function to train a random forest model using a precalculated set of input and output features (usually output from 
+    `calculate_features`). Returns nothing. 
+
+    # Required arguments 
+    ```julia
+    input_h5::String
+    ```
+    Location of input features/targets. Input features are expected to have the name "X", and targets the name "Y". This should be 
+    taken care of automatically if they are outputs from `calculate_features`
+
+    ```julia
+    model_location::String 
+    ```
+    Path to save the trained model out to. Typically should end in `.jld2`
+    
+    # Optional keyword arguments 
+    ```julia
+    verify::Bool = false 
+    ```
+    Whether or not to output a separate .h5 file containing the trained models predictions on the training set 
+    (`Y_PREDICTED`) as well as the targets for the training set (`Y_ACTUAL`) 
+
+    ```julia
+    verify_out::String="model_verification.h5"
+    ```
+    If `verify`, the location to output this verification to. 
+
+    ```julia
+    col_subset=: 
+    ```
+    Set of columns from `input_h5` to train model on. Useful if one wishes to train a model while excluding some features from a training set. 
+    
+    ```julia
+    row_subset=:
+    ```
+    Set of rows from `input_h5` to train on.
+
+    ```julia
+    n_trees::Int = 21
+    ```
+    Number of trees in the Random Forest ensemble 
+
+    ```julia
+    max_depth::Int = 14
+    ```
+    Maximum node depth in each tree in RF ensemble 
+
+    ```julia
+    class_weights::Vector{Float32} = Vector{Float32}([1.,2.])
+    ```
+    Vector of class weights to apply to each observation. Should be 1 observation per sample in the input data files 
+    """
+    function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5", col_subset=:, row_subset=:,
+                        n_trees::Int = 21, max_depth::Int=14, class_weights::Vector{Float32} = Vector{Float32}([1.,2.]))
+
+        ###Load the data
+        radar_data = h5open(input_h5)
+        printstyled("\nOpening $(radar_data)...\n", color=:blue)
+        ###Split into features
+
+        X = read(radar_data["X"])[row_subset , col_subset]
+        Y = read(radar_data["Y"])[:][row_subset]
+
+        model = DecisionTree.RandomForestClassifier(n_trees=n_trees, max_depth=max_depth, rng=50)
+    
+        # if balance_weight 
+        #     counts = [sum(.! Vector{Bool}(Y[:])), sum(Vector{Bool}(Y[:]))]
+        #     dub = 2 * counts
+        #     weights = [sum(counts[1] ./ dub), sum(counts[2] ./ dub)]
+        #     class_weights = [target ? weights[1] : weights[2] for target in Vector{Bool}(Y[:])]
+           
+        # else
+        #     class_weights = ones(length(Y[:]))
+        # end 
+
+
+        if ! (length(Y) == length(class_weights))
+            printstyled("WARNING: class_weights of different length than targets.... Continiuing with no class weights...\n", color=:yellow)
+            class_weights = ones(length(Y))
+        end 
+
+        println("FITTING MODEL")
+        startTime = time() 
+        DecisionTree.fit!(model, X, reshape(Y, length(Y),), class_weights)
+
+        println("COMPLETED FITTING MODEL IN $((time() - startTime)) seconds")
+        println() 
+
+
+        println("MODEL VERIFICATION:")
+        predicted_Y = DecisionTree.predict(model, X) 
+        accuracy = sum(predicted_Y .== Y) / length(Y)
+        println("ACCURACY ON TRAINING SET: $(round(accuracy * 100, sigdigits=3))%")
+        println()
+
+
+        printstyled("SAVING MODEL TO: $(model_location) \n", color=:green) 
+        save_object(model_location, model)
+
+        if (verify) 
+            ###NEW: Write out data to HDF5 files for further processing
+            println("WRITING VERIFICATION DATA TO $(verify_out)" )
+            fid = h5open(verify_out, "w")
+            HDF5.write_dataset(fid, "Y_PREDICTED", predicted_Y)
+            HDF5.write_dataset(fid, "Y_ACTUAL", Y)
+            close(fid) 
+        end 
+
+        close(radar_data) 
+    end
 
 
   
@@ -708,7 +858,7 @@ module Ronin
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
                      QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Tuple{Float64, Float64} = (.5, 1.), output_mask::Bool = true,
-                     mask_name::String = "QC_MASK_2", verbose::Bool=false, REMOVE_HIGH_PGG::Bool = true, REMOVE_LOW_NCP::Bool = true, 
+                     mask_name::String = "QC_MASK_2", verbose::Bool=false, REMOVE_HIGH_PGG::Bool = true, PGG_THRESHOLD = 1., REMOVE_LOW_NCP::Bool = true, NCP_THRESHOLD=.2,
                      output_probs::Bool = false, prob_varname::String = "")
 
         new_model = load_object(model_path) 
@@ -1356,8 +1506,8 @@ module Ronin
                 end 
 
                 X,Y = calculate_features(config.input_path, currt, out, true; 
-                                    verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
-                                    REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
+                                    verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,NCP_THRESHOLD=config.NCP_THRESHOLD, 
+                                    REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, PGG_THRESHOLD = config.PGG_THRESHOLD, QC_variable = config.QC_var, 
                                     remove_variable = config.remove_var, replace_missing = config.replace_missing,
                                     write_out = config.write_out, QC_mask = QC_mask, mask_name = mask_name, weight_matrixes=cw)
                 printstyled("FINISHED CALCULATING FEATURES FOR PASS $(i) in $(round(time() - starttime, digits = 3)) seconds...\n", color=:green)
@@ -1412,12 +1562,16 @@ module Ronin
                     
                     ###NEED to update this if it's beyond two pass so we can pass it the correct mask
                     X, Y, idxer = calculate_features(path, currt, out, true; 
-                                        verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
-                                        REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
+                                        verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, NCP_THRESHOLD=config.NCP_THRESHOLD,
+                                        REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG,PGG_THRESHOLD=config.PGG_THRESHOLD, QC_variable = config.QC_var, 
                                         remove_variable = config.remove_var, replace_missing = config.replace_missing, return_idxer=true,
                                         write_out = false, QC_mask = QC_mask, mask_name = mask_name, weight_matrixes=cw)
-    
-                    met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
+                    
+                    met_probs = DecisionTree.predict_proba(curr_model, X)
+                    if size(met_probs)[2] < 2
+                        throw(DomainError(1, "ERROR: ONLY ONE CLASS IN INPUT DATASET")) 
+                    end 
+                    met_probs = met_probs[:, 2]
                     valid_idxs = (met_probs .> minimum(curr_metprobs)) .& (met_probs .<= maximum(curr_metprobs))
                     print("RESULTANT GATES: $(sum(valid_idxs))")
                     ##Create mask field, fill it, and then write out
@@ -1714,7 +1868,7 @@ module Ronin
                 ###Need to actually pass the QC mask 
                 ###indexer will contain true where gates in the file both were NOT masked out AND met the basic QC thresholds 
                 X, Y, indexer = process_single_file(f, currt, HAS_INTERACTIVE_QC = ((! QC_mode) && config.HAS_INTERACTIVE_QC)
-                    , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,
+                    , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, PGG_threshold = config.PGG_THRESHOLD, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, NCP_THRESHOLD = config.NCP_THRESHOLD, 
                     QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
                     mask_features = QC_mask, feature_mask = feature_mask, weight_matrixes=cw)
                 final_idxer = indexer 
