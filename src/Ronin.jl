@@ -45,7 +45,7 @@ module Ronin
     Vector containing paths to each model in the model chain. Should be same length as the number of models 
 
     ```julia
-    met_probs::Vector{Tuple{Float64,Float64}}
+    met_probs::Vector{Tuple{Float32,Float32}}
     ```
     Vector containing the decision range for a gate to be considered meteorological in each model in the chain. Example, if set to (.9, 1), 
         > 90% of trees in the random forest must assign a gate a label of meteorological for it to be considered meteorological. 
@@ -79,14 +79,14 @@ module Ronin
     ## The following arguments are only quasi-optional, one of them must be set.
     ``` task_paths::Vector{String} = [""]
         task_list::Vector{String} = [""]
-        task_weights::Vector{Vector} = [[Matrix{Union{Float64, Missing}}(undef, 0,0)]]
+        task_weights::Vector{Vector} = [[Matrix{Union{Float32, Missing}}(undef, 0,0)]]
     ```
         Currently only `task_paths` are supported. Contains a vector of the same length as the number of 
         models, with each entry being the path to a file contianing the tasks for the pass. Future plans involve 
         allowing a usesr to specify vectors of tasks in `task_list`. 
 
         `task_weights` must be a vector of vectors, with the first dimension the same length as the number of models in the 
-        chain. The second dimension much either be 1, containing the default weight matrix `Matrix{Union{Float64, Missing}}(undef, 0,0)`, 
+        chain. The second dimension much either be 1, containing the default weight matrix `Matrix{Union{Float32, Missing}}(undef, 0,0)`, 
         or a secondary vector of matrixes - one matrix for each task in the passs. Sample weight matrixes are defined in RoninConstants.jl
         
     ```julia
@@ -119,7 +119,7 @@ module Ronin
     ```
     Name of a raw variable in the radar data that can be used to determine the location of missing gates 
     ```julia 
-    FILL_VAL::Float64 = RoninConstants.FILL_VAL
+    FILL_VAL::Float32 = RoninConstants.FILL_VAL
     ```
     Fill value for output cfradials 
     ```julia
@@ -185,13 +185,13 @@ module Ronin
     PGG_THRESHOLD::Float32 = 1.
     ```
     If REMOVE_HIGH_PGG is set to true, threshold at or above which to remove data. 
-    
+
     """
     Base.@kwdef mutable struct ModelConfig
 
         num_models::Int64
         model_output_paths::Vector{String}
-        met_probs::Vector{Tuple{Float64, Float64}} 
+        met_probs::Vector{Tuple{Float32, Float32}} 
 
         feature_output_paths::Vector{String} 
         
@@ -203,7 +203,7 @@ module Ronin
 
         task_paths::Vector{String} = [""]
         task_list::Vector{String} = [""]
-        task_weights::Vector{Vector} = [[Matrix{Union{Float64, Missing}}(undef, 0,0)]]
+        task_weights::Vector{Vector} = [[Matrix{Union{Float32, Missing}}(undef, 0,0)]]
 
         verbose::Bool = true 
         REMOVE_LOW_NCP::Bool = true 
@@ -211,7 +211,7 @@ module Ronin
         HAS_INTERACTIVE_QC::Bool = false 
         QC_var::String = "VG"
         remove_var::String = "VV" 
-        FILL_VAL::Float64 = FILL_VAL 
+        FILL_VAL::Float32 = FILL_VAL 
         replace_missing::Bool = false 
         write_out::Bool = true 
         QC_mask::Bool = false 
@@ -228,8 +228,8 @@ module Ronin
 
         overwrite_output::Bool = false 
 
-        NCP_threshold = .2 
-        PGG_threshold = 1.  
+        NCP_THRESHOLD::Float32 = .2 
+        PGG_THRESHOLD::Float32 = 1.  
         
     end 
 
@@ -341,7 +341,7 @@ module Ronin
     If true, will return IDXER, where IDXER is a 
 
     ```julia
-    weight_matrixes::Vector{Matrix{Union{Missing, Float64}}} = [(undef, 0,0)]
+    weight_matrixes::Vector{Matrix{Union{Missing, Float32}}} = [(undef, 0,0)]
     ```
     Vector containing a weight matrix for every task in the argument file. For non-spatial parameters, the 
         weights are discarded, and so dummy/placeholder matrixes may be used. 
@@ -350,7 +350,7 @@ module Ronin
         verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, NCP_THRESHOLD::Float32 = .2, REMOVE_HIGH_PGG::Bool = false, PGG_THRESHOLD::Float32=1.,
          QC_variable::String = "VG", remove_variable::String = "VV", 
         replace_missing::Bool = false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String = "", return_idxer::Bool=false, 
-        weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}= [Matrix{Union{Missing, Float64}}(undef, 0,0)])
+        weight_matrixes::Vector{Matrix{Union{Missing, Float32}}}= [Matrix{Union{Missing, Float32}}(undef, 0,0)])
 
         ##If this is a directory, things get a little more complicated 
         paths = Vector{String}()
@@ -369,7 +369,7 @@ module Ronin
         ##Instantiate Matrixes to hold calculated features and verification data 
         output_cols = get_num_tasks(argument_file)
     
-        newX = X = Matrix{Float64}(undef,0,output_cols)
+        newX = X = Matrix{Float32}(undef,0,output_cols)
         newY = Y = Matrix{Int64}(undef, 0,1) 
         idxs = Vector{}(undef,0)
 
@@ -416,7 +416,7 @@ module Ronin
                 end
             end
 
-            X = vcat(X, newX)::Matrix{Float64}
+            X = vcat(X, newX)::Matrix{Float32}
             Y = vcat(Y, newY)::Matrix{Int64}
             newIdx = reshape(newIdx, dims)
             push!(idxs, newIdx)
@@ -481,7 +481,7 @@ module Ronin
     Vector containing the features to be calculated for each cfradial. Example `[DBZ, ISO(DBZ)]`
 
     ```julia
-    weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
+    weight_matrixes::Vector{Matrix{Union{Missing, Float32}}}
     ```
 
     For each task, a weight matrix specifying how much each gate in a spatial calculation will be given. 
@@ -552,7 +552,7 @@ module Ronin
     ```
     Whether or not to write out to file. 
     """
-    function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}
+    function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float32}}}
         ,output_file::String, HAS_INTERACTIVE_QC::Bool; verbose::Bool=false,
          REMOVE_LOW_NCP = false, NCP_THRESHOLD::Float32 = .2, REMOVE_HIGH_PGG = false, PGG_THRESHOLD::Float32=1., QC_variable::String = "VG", remove_variable::String = "VV", 
          replace_missing::Bool=false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String="", return_idxer::Bool =false)
@@ -576,7 +576,7 @@ module Ronin
         ##Instantiate Matrixes to hold calculated features and verification data 
         output_cols = length(tasks)
     
-        newX = X = Matrix{Float64}(undef,0,output_cols)
+        newX = X = Matrix{Float32}(undef,0,output_cols)
         newY = Y = Matrix{Int64}(undef, 0,1) 
         idxs = Vector{}(undef,0)
 
@@ -624,7 +624,7 @@ module Ronin
                 end
             end 
 
-            X = vcat(X, newX)::Matrix{Float64}
+            X = vcat(X, newX)::Matrix{Float32}
             Y = vcat(Y, newY)::Matrix{Int64}
             newIdx = reshape(indexer, dims)
             push!(idxs, newIdx)
@@ -823,7 +823,7 @@ module Ronin
     be applied to these gates, they will simply remain missing. 
 
     ```julia
-    decision_threshold::Float64 = .5
+    decision_threshold::Float32 = .5
     ```
     Used to leverage probablistic nature of random forest methodology. When the model has a greater than `decision_threshold`
     level confidence that a gate is meteorological data, it will be assigned as such. Anything at or below this confidence threshold
@@ -857,7 +857,7 @@ module Ronin
     What to name the probability variable in the cfradial file 
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
-                     QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Tuple{Float64, Float64} = (.5, 1.), output_mask::Bool = true,
+                     QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Tuple{Float32, Float32} = (.5, 1.), output_mask::Bool = true,
                      mask_name::String = "QC_MASK_2", verbose::Bool=false, REMOVE_HIGH_PGG::Bool = true, PGG_THRESHOLD = 1., REMOVE_LOW_NCP::Bool = true, NCP_THRESHOLD=.2,
                      output_probs::Bool = false, prob_varname::String = "")
 
@@ -891,7 +891,7 @@ module Ronin
             for var in VARIABLES_TO_QC
 
                 ##Create new field to reshape QCed field to 
-                NEW_FIELD = missings(Float64, cfrad_dims) 
+                NEW_FIELD = missings(Float32, cfrad_dims) 
 
                 ##Only modify relevant data based on indexer, everything else should be fill value 
                 QCED_FIELDS = input_cfrad[var][:][indexer]
@@ -1203,7 +1203,7 @@ module Ronin
      Also expects the h5 file to contain an attribute known as `Parameters` containing abbreviations for the feature types 
 
     ```julia 
-    λs::Vector{Float64}
+    λs::Vector{Float32}
     ```
 
     Vector of values used to vary the strength of the penalty term in the regularization. 
@@ -1214,7 +1214,7 @@ module Ronin
     ---
 
     ```julia
-    pred_threshold::Float64
+    pred_threshold::Float32
     ```
 
     Minimum cofidence level for binary classifier when predicting 
@@ -1224,7 +1224,7 @@ module Ronin
     Returns a DataFrame with each row containing info about a regression for a specific λ, the values of the regression coefficients 
         for each input feature, and the Root Mean Square Error of the resultant regression. 
     """
-    function get_feature_importance(input_file_path::String, λs::Vector{Float64}; pred_threshold::Float64 = .5)
+    function get_feature_importance(input_file_path::String, λs::Vector{Float32}; pred_threshold::Float32 = .5)
 
 
         MLJ.@load LogisticClassifier pkg=MLJLinearModels
@@ -1274,7 +1274,7 @@ module Ronin
 
     """
         error_characteristics(file_path::String, config_file_path::String, model_path::String;
-        indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float64 = .5, write_out::Bool=false,
+        indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float32 = .5, write_out::Bool=false,
         output_name::String="Model_Error_Characteristics.h5")
 
     Function to process a set of cfradial files that have already been interactively QC'ed and return information about where errors 
@@ -1311,7 +1311,7 @@ module Ronin
     Name of variable in CFRadial files that has already been interactively QC'ed. Used as the verification data. 
 
     ```julia
-    decision_threshold::Float64 = .5
+    decision_threshold::Float32 = .5
     ```
     Fraction of decision trees in the RF model that must agree for a given gate to be classified as meteorological. 
     For example, at .5, >=50% of the trees must predict that a gate is meteorological for it to be classified as such, 
@@ -1332,7 +1332,7 @@ module Ronin
     Where
 
     ```julia
-    X::Matrix{Float64}
+    X::Matrix{Float32}
     ```
     Each row in X represents a different radar gate, while each column a different parameter as according to the order 
     that they are listed in the config_file_path 
@@ -1365,7 +1365,7 @@ module Ronin
     Which gates were misclassified as non-meteorological data relative to interactive QC 
     """
     function error_characteristics(file_path::String, config_file_path::String, model_path::String;
-        indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float64 = .5, write_out::Bool=false,
+        indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float32 = .5, write_out::Bool=false,
         output_name::String="Model_Error_Characteristics.h5")
 
 
@@ -1385,7 +1385,7 @@ module Ronin
 
         tasks = get_task_params(config_file_path)
 
-        X = Matrix{Float64}(undef,0,length(tasks))
+        X = Matrix{Float32}(undef,0,length(tasks))
         Y = Matrix{Int32}(undef,0,1) 
         indexer = Matrix{Int32}(undef,0,1)
         predictions = Matrix{Int32}(undef, 0, 1) 
@@ -1575,7 +1575,7 @@ module Ronin
                     valid_idxs = (met_probs .> minimum(curr_metprobs)) .& (met_probs .<= maximum(curr_metprobs))
                     print("RESULTANT GATES: $(sum(valid_idxs))")
                     ##Create mask field, fill it, and then write out
-                    new_mask = Matrix{Union{Missing, Float64}}(missings(dims))[:]
+                    new_mask = Matrix{Union{Missing, Float32}}(missings(dims))[:]
                    
                     ##We only care about gates that have met the base QC thresholds, so first index 
                     ##by indexer returned from calculate_features, and then set the gates between
@@ -1595,11 +1595,11 @@ module Ronin
     end 
     
     """
-    `QC_scan(input_cfrad::String, features::Matrix{Float64}, indexer::Vector{Bool}, config::ModelConfig, iter::Int64)`
+    `QC_scan(input_cfrad::String, features::Matrix{Float32}, indexer::Vector{Bool}, config::ModelConfig, iter::Int64)`
 
 
     """
-    function QC_scan(input_cfrad::String, features::Matrix{Float64}, indexer::Vector{Bool}, config::ModelConfig, iter::Int64)
+    function QC_scan(input_cfrad::String, features::Matrix{Float32}, indexer::Vector{Bool}, config::ModelConfig, iter::Int64)
         
         input_set = NCDataset(input_cfrad, "a") 
         new_model = load_object(config.model_output_paths[iter])
@@ -1615,7 +1615,7 @@ module Ronin
         for var in VARIABLES_TO_QC
 
             ##Create new field to reshape QCed field to 
-            NEW_FIELD = missings(Float64, cfrad_dims) 
+            NEW_FIELD = missings(Float32, cfrad_dims) 
             ##Only modify relevant data based on indexer, everything else should be fill value 
             QCED_FIELDS = input_set[var][:][indexer]
 
@@ -1786,9 +1786,9 @@ module Ronin
     
     * `predictions::Vector{Bool}` Model classifications for gates that passed basic quality control thresholds 
     * `values::BitVector` Verification gates correspondant to predictions 
-    * `init_idxers::Vector{Vector{Float64}}` Information about where original radar data did/did not meet basic quality control thresholds. 
+    * `init_idxers::Vector{Vector{Float32}}` Information about where original radar data did/did not meet basic quality control thresholds. 
                                             Each vector contains a flattened vector describing whether or not a given gate was predicted on. 
-    * `total_met_probs::Vector{Float64}`If kewyword argument return_probs is set to `true`, then `total_met_probs` will be returned. Each entry 
+    * `total_met_probs::Vector{Float32}`If kewyword argument return_probs is set to `true`, then `total_met_probs` will be returned. Each entry 
                                         into this vector corresponds to the gate represented by predictions and values, and denotes the fraction of 
                                         trees in the random forest that classified the gate as meteorological.
 
@@ -1808,9 +1808,9 @@ module Ronin
     
         predictions = Vector{Bool}(undef, 0)
         values = BitVector(undef, 0)
-        total_met_probs = Vector{Float64}(undef, 0)
+        total_met_probs = Vector{Float32}(undef, 0)
     
-        init_idxers = Vector{Vector{Float64}}(undef, 0)
+        init_idxers = Vector{Vector{Float32}}(undef, 0)
     
         printstyled("LOADING MODELS....\n", color=:green)
         flush(stdout)
@@ -1868,7 +1868,7 @@ module Ronin
                 ###Need to actually pass the QC mask 
                 ###indexer will contain true where gates in the file both were NOT masked out AND met the basic QC thresholds 
                 X, Y, indexer = process_single_file(f, currt, HAS_INTERACTIVE_QC = ((! QC_mode) && config.HAS_INTERACTIVE_QC)
-                    , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, PGG_threshold = config.PGG_THRESHOLD, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, NCP_THRESHOLD = config.NCP_THRESHOLD, 
+                    , REMOVE_HIGH_PGG = config.REMOVE_HIGH_PGG, PGG_THRESHOLD = config.PGG_THRESHOLD, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, NCP_THRESHOLD = config.NCP_THRESHOLD, 
                     QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
                     mask_features = QC_mask, feature_mask = feature_mask, weight_matrixes=cw)
                 final_idxer = indexer 
@@ -1927,7 +1927,7 @@ module Ronin
                     @assert length(gates_of_interest) == sum(indexer) 
     
                     indexer[indexer] .= gates_of_interest 
-                    new_mask = Matrix{Union{Missing, Float64}}(missings(scan_dims))[:]
+                    new_mask = Matrix{Union{Missing, Float32}}(missings(scan_dims))[:]
                     new_mask[indexer] .= 1. 
                     new_mask = reshape(new_mask, scan_dims)
     
@@ -2026,7 +2026,7 @@ module Ronin
 
 
 
-    function get_idxer(model_config::ModelConfig, low_threshold::Float64, high_threshold::Float64)
+    function get_idxer(model_config::ModelConfig, low_threshold::Float32, high_threshold::Float32)
 
         low_predictions, low_verification, low_idxrs, low_probs = composite_prediction(model_config, return_probs=true)
         pred_idxer = Vector{Bool}((low_probs .> low_threshold) .& (low_probs .< high_threshold))
@@ -2078,14 +2078,14 @@ module Ronin
 
         Given a vector of predictions and targets, calculates various scores and returns them in the order of 
 
-        * `prec_score::Float64` -> Precision Score, defined as number of true positives divided by sum of true positives and false positives 
-        * `recall::Float64` Recall, defined as number of true positives divided by sum of true positives and false negatives 
-        * `f1::Float64` F1 score 
-        * `true_positives::Float64` Number of true positives 
-        * `false_positives::Float64` Number of false positives 
-        * `true_negatives::Float64` Number of true negatives 
-        * `false_negatives::Float64` Number of false negatives 
-        * `num_gates::Float64` Total number of classifications 
+        * `prec_score::Float32` -> Precision Score, defined as number of true positives divided by sum of true positives and false positives 
+        * `recall::Float32` Recall, defined as number of true positives divided by sum of true positives and false negatives 
+        * `f1::Float32` F1 score 
+        * `true_positives::Float32` Number of true positives 
+        * `false_positives::Float32` Number of false positives 
+        * `true_negatives::Float32` Number of true negatives 
+        * `false_negatives::Float32` Number of false negatives 
+        * `num_gates::Float32` Total number of classifications 
 
     """
     function evaluate_model(predictions::Vector{Bool}, targets::Vector{Bool})

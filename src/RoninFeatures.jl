@@ -43,7 +43,7 @@ end
 
 
 
-function _weighted_func(var::AbstractMatrix{Union{Float32, Missing}}, weights::Matrix{Union{Missing, Float64}}, func)
+function _weighted_func(var::AbstractMatrix{Union{Float32, Missing}}, weights::Matrix{Union{Missing, Float32}}, func)
     ##Returns 0 when missing, 1 when not 
     return(func(var .* weights))
 end
@@ -52,17 +52,17 @@ function _weighted_func(var, weights, func)
     return(func(var .* weights))
 end
 
-function _weighted_func(var::Matrix{Float64}, weights::Matrix{Union{Missing, Float64}}, func)
+function _weighted_func(var::Matrix{Float32}, weights::Matrix{Union{Missing, Float32}}, func)
     return(func(var .* weights))
 end
 
 
-function calc_iso(var::AbstractMatrix{Union{Missing, Float64}};
-    weights::Matrix{Union{Missing, Float64}} = iso_weights, 
+function calc_iso(var::AbstractMatrix{Union{Missing, Float32}};
+    weights::Matrix{Union{Missing, Float32}} = iso_weights, 
     window = iso_window)
 
     ###Where is missing? 
-    missings = map((x) -> Float64(ismissing(x)), var)
+    missings = map((x) -> Float32(ismissing(x)), var)
     ###Calculate sum of missing gates in the windowed area for each gate in scan 
     iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window) 
 end
@@ -71,11 +71,11 @@ end
 ###These actually don't necessarily need to be functions of their own, could just move them to
 ###Calls to _weighted_func 
 function calc_iso(var::AbstractMatrix{Union{Missing, Float32}}; weights = iso_weights, window = iso_window)
-    missings = map((x) -> Float64(ismissing(x)), var)
+    missings = map((x) -> Float32(ismissing(x)), var)
     iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window) 
 end
 
-function airborne_ht(elevation_angle::Float64, antenna_range::Float64, aircraft_height::Float64)
+function airborne_ht(elevation_angle::Float32, antenna_range::Float32, aircraft_height::Float32)
     ##Initial heights are in meters, convert to km 
     aRange_km, acHeight_km = (antenna_range, aircraft_height) ./ 1000
     term1 = aRange_km^2 + EarthRadiusKm^2
@@ -124,11 +124,12 @@ end
 
 
 ##Calculate the windowed standard deviation of a given variablevariable 
-function calc_std(var::AbstractMatrix{Union{Missing, Float64}}; weights = std_weights, window = std_window)
+function calc_std(var::AbstractMatrix{Union{Missing, Float32}}; weights = std_weights, window = std_window)
     mapwindow((x) -> _weighted_func(x, weights, missing_std), var, window, border=Fill(missing))
 end 
 
 ##Calculate the windowed standard deviation of a given variablevariable 
+
 function calc_std(var::AbstractMatrix{}; weights = std_weights, window = std_window)
     global REPLACE_MISSING_WITH_FILL
 
@@ -181,7 +182,7 @@ function calc_aht(cfrad::NCDataset)
     ranges = repeat(cfrad["range"][:], 1, num_times)
     heights = repeat(transpose(cfrad["altitude"][:]), num_ranges, 1)
 
-    @inbounds return(map((x,y,z) -> airborne_ht(Float64(x),Float64(y),Float64(z)), elevs, ranges, heights))
+    @inbounds return(map((x,y,z) -> airborne_ht(Float32(x),Float32(y),Float32(z)), elevs, ranges, heights))
 
 end 
 
@@ -413,10 +414,10 @@ For spatial parameters, whether or not to replace `missings` values with `FILL_V
                 where in the scan features valid data and where does not. 
 """
 function process_single_file(cfrad::NCDataset, argfile_path::String; 
-    HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, NCP_threshold::Float = .2, REMOVE_HIGH_PGG::Bool = false,
+    HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, NCP_THRESHOLD::Float32 = .2, REMOVE_HIGH_PGG::Bool = false,
     PGG_THRESHOLD::Float32 = 1.,  QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false,
     mask_features::Bool = false, feature_mask::Matrix{Bool} = [true true ; false false;], 
-        weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}= [Matrix{Union{Missing, Float64}}(undef, 0,0)])
+        weight_matrixes::Vector{Matrix{Union{Missing, Float32}}}= [Matrix{Union{Missing, Float32}}(undef, 0,0)])
 
     cfrad_dims = (cfrad.dim["range"], cfrad.dim["time"])
     #println("\r\nDIMENSIONS: $(cfrad_dims[1]) times x $(cfrad_dims[2]) ranges\n")
@@ -432,16 +433,16 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
 
     
     ###Features array 
-    X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
+    X = Matrix{Float32}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
 
     ###Array to hold PGG for indexing  
-    PGG = Matrix{Float64}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
+    PGG = Matrix{Float32}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
 
     PGG_Completed_Flag = false 
     NCP_Completed_Flag = false 
-    add_weight_matrix = (weight_matrixes != [Matrix{Union{Missing, Float64}}(undef, 0,0)]) & (length(weight_matrixes) == length(tasks))
+    add_weight_matrix = (weight_matrixes != [Matrix{Union{Missing, Float32}}(undef, 0,0)]) & (length(weight_matrixes) == length(tasks))
     ### 
-    if (! add_weight_matrix) & (weight_matrixes != [Matrix{Union{Missing, Float64}}(undef, 0,0)])
+    if (! add_weight_matrix) & (weight_matrixes != [Matrix{Union{Missing, Float32}}(undef, 0,0)])
         print("WEIGHT MATRIXES: $(weight_matrixes)")
         throw("ERROR: Weight matrixes are not default but do not match length of tasks... terminating...")
     end 
@@ -491,7 +492,7 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
                 raw = @eval $func($cfrad[$var][:,:]; weights=$weight_matrix, window = $window_size )[:]
             end 
 
-            filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            filled = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in raw]
         
             any(isnan, filled) ? throw("NAN ERROR") : 
 
@@ -507,7 +508,7 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
 
             func = Symbol(func_prefix * lowercase(task))
             raw = @eval $func($cfrad)[:]
-            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            X[:, i] = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in raw]
 
             if (task == "PGG")
                 PGG_Completed_Flag = true
@@ -524,7 +525,7 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
         ###Otherwise it's just a variable from the cfrad 
         else 
             startTime = time() 
-            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
+            X[:, i] = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in cfrad[task][:]]
             calc_length = time() - startTime
         end 
     end
@@ -566,7 +567,7 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
         if (NCP_Completed_Flag) 
             INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
         else 
-            NCP = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_ncp(cfrad)[:]]
+            NCP = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in calc_ncp(cfrad)[:]]
             INDEXER[INDEXER] = [ x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
         end 
     end
@@ -578,7 +579,7 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
         if (PGG_Completed_Flag)
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
         else
-            PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
+            PGG = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in calc_pgg(cfrad)[:]]
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
         end
 
@@ -615,7 +616,7 @@ end
 ###Multiple dispatch version of process_single_file that allows user to specify a vector of weight matrixes 
 ###In this case will also pass the tasks to complete as a vector 
 ###weight_matrixes are also implicitly the window size 
-function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float64}}}; 
+function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float32}}}; 
     HAS_INTERACTIVE_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable::String = "VG", remove_variable::String = "VV",
     replace_missing::Bool = false, mask_features::Bool=false, feature_mask::Matrix{Bool} = [true true ; false false])
 
@@ -631,10 +632,10 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
     valid_vars = keys(cfrad)
 
     ###Features array 
-    X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
+    X = Matrix{Float32}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
 
     ###Array to hold PGG for indexing  
-    PGG = Matrix{Float64}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
+    PGG = Matrix{Float32}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
 
     PGG_Completed_Flag = false 
     NCP_Completed_Flag = false 
@@ -675,7 +676,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
                 raw = @eval $func($cfrad[$var][:,:]; weights = $weight_matrix, window = $window_size)[:]
             end 
 
-            filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            filled = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in raw]
             
             any(isnan, filled) ? throw("NAN ERROR") : 
 
@@ -689,7 +690,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
 
             func = Symbol(func_prefix * lowercase(task))
             raw = @eval $func($cfrad)[:]
-            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            X[:, i] = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in raw]
 
             if (task == "PGG")
                 PGG_Completed_Flag = true
@@ -706,7 +707,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
         ###Otherwise it's just a variable from the cfrad 
         else 
             startTime = time() 
-            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
+            X[:, i] = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in cfrad[task][:]]
             calc_length = time() - startTime
         end 
     end
@@ -738,7 +739,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
         if (NCP_Completed_Flag) 
             INDEXER[INDEXER] = [x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
         else 
-            NCP = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_ncp(cfrad)[:]]
+            NCP = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in calc_ncp(cfrad)[:]]
             INDEXER[INDEXER] = [ x <= NCP_THRESHOLD ? false : true for x in NCP[INDEXER]]
         end 
     end
@@ -748,7 +749,7 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
         if (PGG_Completed_Flag)
             INDEXER[INDEXER] = [x >= PGG_THRESHOLD ? false : true for x in PGG[INDEXER]]
         else
-            PGG = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in calc_pgg(cfrad)[:]]
+            PGG = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in calc_pgg(cfrad)[:]]
             INDEXER[INDEXER] = [((x >= PGG_THRESHOLD) .& (x != FILL_VAL)) ? false : true for x in PGG[INDEXER]]
         end
 
@@ -796,10 +797,10 @@ function process_single_file_original(cfrad::NCDataset, argfile_path::String;
     
     
     ###Features array 
-    X = Matrix{Float64}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
+    X = Matrix{Float32}(undef,cfrad.dim["time"] * cfrad.dim["range"], length(tasks))
 
     ###Array to hold PGG for indexing  
-    PGG = Matrix{Float64}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
+    PGG = Matrix{Float32}(undef, cfrad.dim["time"]*cfrad.dim["range"], 1)
 
     PGG_Completed_Flag = false 
     NCP_Completed_Flag = false 
@@ -827,7 +828,7 @@ function process_single_file_original(cfrad::NCDataset, argfile_path::String;
             var = regex_match[2]
 
             raw = @eval $func($cfrad[$var][:,:])[:]
-            filled = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            filled = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in raw]
             
             any(isnan, filled) ? throw("NAN ERROR") : 
 
@@ -841,7 +842,7 @@ function process_single_file_original(cfrad::NCDataset, argfile_path::String;
 
             func = Symbol(func_prefix * lowercase(task))
             raw = @eval $func($cfrad)[:]
-            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in raw]
+            X[:, i] = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in raw]
 
             if (task == "PGG")
                 PGG_Completed_Flag = true
@@ -858,7 +859,7 @@ function process_single_file_original(cfrad::NCDataset, argfile_path::String;
         ###Otherwise it's just a variable from the cfrad 
         else 
             startTime = time() 
-            X[:, i] = [ismissing(x) || isnan(x) ? Float64(FILL_VAL) : Float64(x) for x in cfrad[task][:]]
+            X[:, i] = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in cfrad[task][:]]
             calc_length = time() - startTime
         end 
     end
