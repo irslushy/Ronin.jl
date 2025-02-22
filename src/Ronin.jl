@@ -1465,7 +1465,7 @@ module Ronin
     function train_multi_model(config::ModelConfig)
         ##Quick input sanitation check 
         @assert (length(config.model_output_paths) == length(config.feature_output_paths)
-                 == length(config.met_probs) == length(config.task_paths) == length(config.task_weights))
+                 == length(config.met_probs) == length(config.task_paths) == length(config.task_weights) == length(config.mask_names))
     
         full_start_time = time() 
         ###Iteratively train models and apply QC_scan with the specified probabilites to train a multi-pass model 
@@ -1505,7 +1505,7 @@ module Ronin
                     isfile(out) ? rm(out) : ""
                 end 
 
-                X,Y = calculate_features(config.input_path, currt, out, true; 
+                X,Y = calculate_features(config.input_path, currt, out, config.HAS_INTERACTIVE_QC; 
                                     verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP,NCP_THRESHOLD=config.NCP_THRESHOLD, 
                                     REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, PGG_THRESHOLD = config.PGG_THRESHOLD, QC_variable = config.QC_var, 
                                     remove_variable = config.remove_var, replace_missing = config.replace_missing,
@@ -1694,6 +1694,9 @@ module Ronin
     """
     function QC_scan(config::ModelConfig, filepath::String, predictions::Vector{Bool}, init_idxer::Vector{Bool})
 
+        @assert (length(config.model_output_paths) == length(config.feature_output_paths)
+                 == length(config.met_probs) == length(config.task_paths) == length(config.task_weights) == length(config.mask_names))
+
         starttime = time() 
         input_set = NCDataset(filepath, "a") 
         sweep_dims = (dimsize(input_set["range"]).range, dimsize(input_set["time"]).time)
@@ -1709,11 +1712,9 @@ module Ronin
                 "units" => input_set[var].attrib["units"],
                 "long_name" => "Random Forest Model QC'ed $(var) field"
             )
-
-             ##Set MISSINGS to fill value in current field
                     
              initial_count = count(.!map(ismissing, QCED_FIELDS))
-             print("INITiAL COUNT: $(initial_count)")
+             print("INITIAL COUNT: $(initial_count)")
              ##Apply predictions from model 
              ##If model predicts 1, this indicates a prediction of meteorological data 
              QCED_FIELDS = map(x -> Bool(predictions[x[1]]) ? x[2] : missing, enumerate(QCED_FIELDS))
@@ -1734,6 +1735,12 @@ module Ronin
                         println("Already exists... overwriting") 
                     end 
                     input_set[var*config.QC_SUFFIX][:,:] = NEW_FIELD 
+                    ###Key assumption here is that we'll always have units and fill val 
+                    ###Rewrite the fill value and attributes as well 
+                    input_set[var*config.QC_SUFFIX].attrib["long_name"] = NEW_FIELD_ATTRS["long_name"]
+                    input_set[var*config.QC_SUFFIX].atrrib["units"] = NEW_FIELD_ATTRS["units"]
+                    ##Cannot redefine FILL VALUE 
+                    #input_set[var*config.QC_SUFFIX].attrib["_FillValue"] = config.FILL_VAL
                 else 
                     throw(e)
                 end 
@@ -1797,7 +1804,8 @@ module Ronin
     """
     function composite_prediction(config::ModelConfig; write_predictions_out::Bool = false, prediction_outfile::String="model_predictions.h5", return_probs::Bool=false, QC_mode::Bool=false)
 
-        @assert length(config.model_output_paths) == length(config.feature_output_paths) == length(config.met_probs)
+       @assert (length(config.model_output_paths) == length(config.feature_output_paths)
+                 == length(config.met_probs) == length(config.task_paths) == length(config.task_weights) == length(config.mask_names))
     
         ###Let's get the files 
         if isdir(config.input_path)
@@ -1931,7 +1939,7 @@ module Ronin
                     new_mask[indexer] .= 1. 
                     new_mask = reshape(new_mask, scan_dims)
     
-                    write_field(file, config.mask_names[i+1], new_mask,  attribs=Dict("Units" => "Bool", "Description" => "Gates between met prob theresholds"))
+                    write_field(file, config.mask_names[i+1], new_mask,  attribs=Dict("Units" => "Bool", "Description" => "Gates between met prob theresholds"), fillval=config.FILL_VAL)
                     
                 end 
             
@@ -2046,12 +2054,13 @@ module Ronin
 
     """
     
-    function write_field(filepath::String, fieldname::String, NEW_FIELD, overwrite::Bool = true; attribs::Dict = Dict("" => ""), dim_names::Tuple=("range", "time"), verbose::Bool=true)
+    function write_field(filepath::String, fieldname::String, NEW_FIELD, overwrite::Bool = true; 
+                attribs::Dict = Dict("" => ""), dim_names::Tuple=("range", "time"), verbose::Bool=true, fillval::Float32 = Float32(-32000.))
             
         Dataset(filepath, "a") do input_set 
             try 
                 print(input_set)
-                defVar(input_set, fieldname, NEW_FIELD, dim_names, fillvalue = -32000; attrib=attribs)
+                defVar(input_set, fieldname, NEW_FIELD, dim_names, fillvalue = fillval; attrib=attribs)
             catch e
                 print(e)
                 print("INPUT_SET $(typeof(input_set)), VAR: $(typeof(fieldname))")
@@ -2061,6 +2070,16 @@ module Ronin
                         println("Already exists... overwriting") 
                     end 
                     input_set[fieldname][:,:] = NEW_FIELD 
+
+                    if attribs != Dict("" => "")
+                        for key in keys(attribs)
+                            if key == "_FillValue"
+                                continue 
+                            end 
+                            input_set[fieldname].attrib[key] = attribs[key]
+                        end 
+                    end 
+                    ##Copy over new attributes 
                 else 
                     close(filepath)
                     throw(e)
