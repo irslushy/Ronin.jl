@@ -414,8 +414,8 @@ For spatial parameters, whether or not to replace `missings` values with `FILL_V
                 where in the scan features valid data and where does not. 
 """
 function process_single_file(cfrad::NCDataset, argfile_path::String; 
-    HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, NCP_THRESHOLD::Float32 = .2, REMOVE_HIGH_PGG::Bool = false,
-    PGG_THRESHOLD::Float32 = 1.,  QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false,
+    HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, NCP_THRESHOLD::Float32 = .2f0, REMOVE_HIGH_PGG::Bool = false,
+    PGG_THRESHOLD::Float32 = 1.f0,  QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool=false,
     mask_features::Bool = false, feature_mask::Matrix{Bool} = [true true ; false false;], 
         weight_matrixes::Vector{Matrix{Union{Missing, Float32}}}= [Matrix{Union{Missing, Float32}}(undef, 0,0)])
 
@@ -617,8 +617,8 @@ end
 ###In this case will also pass the tasks to complete as a vector 
 ###weight_matrixes are also implicitly the window size 
 function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float32}}}; 
-    HAS_INTERACTIVE_QC = false, REMOVE_LOW_NCP = false, REMOVE_HIGH_PGG = false, QC_variable::String = "VG", remove_variable::String = "VV",
-    replace_missing::Bool = false, mask_features::Bool=false, feature_mask::Matrix{Bool} = [true true ; false false])
+    HAS_INTERACTIVE_QC::Bool = false, REMOVE_LOW_NCP::Bool = false, NCP_THRESHOLD::Float32 = .2f0, REMOVE_HIGH_PGG::Bool = false, PGG_THRESHOLD::Float32 = 1.f0, 
+    QC_variable::String = "VG", remove_variable::String = "VV", replace_missing::Bool = false, mask_features::Bool=false, feature_mask::Matrix{Bool} = [true true ; false false])
 
 
     global REPLACE_MISSING_WITH_FILL
@@ -778,8 +778,6 @@ function process_single_file(cfrad::NCDataset, tasks::Vector{String}, weight_mat
     end 
 end 
 
-
-end 
 
 
 

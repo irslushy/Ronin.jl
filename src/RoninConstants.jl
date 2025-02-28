@@ -41,13 +41,13 @@ sw = standard_window
 pw = placeholder_window
 
 
-EarthRadiusKm::Float32 = 6375.636
-EarthRadiusSquar::Float32 = 6375.636 * 6375.636
-DegToRad::Float32 = 0.01745329251994372
+EarthRadiusKm::Float32 = 6375.636f0
+EarthRadiusSquar::Float32 = 6375.636f0 * 6375.636f0
+DegToRad::Float32 = 0.01745329251994372f0
 
 # Beamwidth of ELDORA and TDR
-eff_beamwidth::Float32 = 1.8
-beamwidth::Float32 = eff_beamwidth*0.017453292;
+eff_beamwidth::Float32 = 1.8f0
+beamwidth::Float32 = eff_beamwidth*0.017453292f0
 
 ###Prefix of functions for calculating spatially averaged variables in the utils.jl file 
 func_prefix::String= "calc_"
@@ -56,7 +56,7 @@ func_regex::Regex = r"(\w{1,})\((\w{1,})\)"
 ###List of functions currently implemented in the module
 valid_funcs::Array{String} = ["AVG", "ISO", "STD"]
 valid_derived_params::Array{String} = ["AHT", "PGG", "RNG", "NRG"]
-FILL_VAL::Float32 = -32000.
+FILL_VAL::Float32 = -32000.f0
 RADAR_FILE_PREFIX::String = "cfrad"
 
 ##Whether or not to replace a MISSING value with FILL in the spatial calculations 

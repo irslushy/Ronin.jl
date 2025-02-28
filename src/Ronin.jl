@@ -228,8 +228,8 @@ module Ronin
 
         overwrite_output::Bool = false 
 
-        NCP_THRESHOLD::Float32 = .2 
-        PGG_THRESHOLD::Float32 = 1.  
+        NCP_THRESHOLD::Float32 = .2f0
+        PGG_THRESHOLD::Float32 = 1.f0  
         
     end 
 
@@ -347,7 +347,7 @@ module Ronin
         weights are discarded, and so dummy/placeholder matrixes may be used. 
     """
     function calculate_features(input_loc::String, argument_file::String, output_file::String, HAS_INTERACTIVE_QC::Bool; 
-        verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, NCP_THRESHOLD::Float32 = .2, REMOVE_HIGH_PGG::Bool = false, PGG_THRESHOLD::Float32=1.,
+        verbose::Bool=false, REMOVE_LOW_NCP::Bool = false, NCP_THRESHOLD::Float32 = .2f0, REMOVE_HIGH_PGG::Bool = false, PGG_THRESHOLD::Float32=1.f0,
          QC_variable::String = "VG", remove_variable::String = "VV", 
         replace_missing::Bool = false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String = "", return_idxer::Bool=false, 
         weight_matrixes::Vector{Matrix{Union{Missing, Float32}}}= [Matrix{Union{Missing, Float32}}(undef, 0,0)])
@@ -554,7 +554,7 @@ module Ronin
     """
     function calculate_features(input_loc::String, tasks::Vector{String}, weight_matrixes::Vector{Matrix{Union{Missing, Float32}}}
         ,output_file::String, HAS_INTERACTIVE_QC::Bool; verbose::Bool=false,
-         REMOVE_LOW_NCP = false, NCP_THRESHOLD::Float32 = .2, REMOVE_HIGH_PGG = false, PGG_THRESHOLD::Float32=1., QC_variable::String = "VG", remove_variable::String = "VV", 
+         REMOVE_LOW_NCP = false, NCP_THRESHOLD::Float32 = .2f0, REMOVE_HIGH_PGG = false, PGG_THRESHOLD::Float32=.1f0, QC_variable::String = "VG", remove_variable::String = "VV", 
          replace_missing::Bool=false, write_out::Bool=true, QC_mask::Bool = false, mask_name::String="", return_idxer::Bool =false)
 
         ##If this is a directory, things get a little more complicated 
@@ -722,7 +722,7 @@ module Ronin
     Vector of class weights to apply to each observation. Should be 1 observation per sample in the input data files 
     """
     function train_model(input_h5::String, model_location::String; verify::Bool=false, verify_out::String="model_verification.h5", col_subset=:, row_subset=:,
-                        n_trees::Int = 21, max_depth::Int=14, class_weights::Vector{Float32} = Vector{Float32}([1.,2.]))
+                        n_trees::Int = 21, max_depth::Int=14, class_weights::Vector{Float32} = Vector{Float32}([1.f0,2.f0]))
 
         ###Load the data
         radar_data = h5open(input_h5)
@@ -857,7 +857,7 @@ module Ronin
     What to name the probability variable in the cfradial file 
     """
     function QC_scan(file_path::String, config_file_path::String, model_path::String; VARIABLES_TO_QC::Vector{String}= ["ZZ", "VV"],
-                     QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Tuple{Float32, Float32} = (.5, 1.), output_mask::Bool = true,
+                     QC_suffix::String = "_QC", indexer_var::String="VV", decision_threshold::Tuple{Float32, Float32} = (.5f0, 1.f0), output_mask::Bool = true,
                      mask_name::String = "QC_MASK_2", verbose::Bool=false, REMOVE_HIGH_PGG::Bool = true, PGG_THRESHOLD = 1., REMOVE_LOW_NCP::Bool = true, NCP_THRESHOLD=.2,
                      output_probs::Bool = false, prob_varname::String = "")
 
@@ -1039,9 +1039,9 @@ module Ronin
     function split_training_testing!(DIR_PATHS::Vector{String}, TRAINING_PATH::String, TESTING_PATH::String)
 
         ###TODO  - make sure to ignore .tmp_hawkedit files OTHERWISE WON'T WORK AS EXPECTED 
-        TRAINING_FRAC::Float32 = .72
-        VALIDATION_FRAC::Float32 = .08
-        TESTING_FRAC:: Float32 = 1 - TRAINING_FRAC - VALIDATION_FRAC
+        TRAINING_FRAC::Float32 = .72f0
+        VALIDATION_FRAC::Float32 = .08f0
+        TESTING_FRAC:: Float32 = 1.f0 - TRAINING_FRAC - VALIDATION_FRAC
 
         ###Assume that each directory represents a different case 
         NUM_CASES::Int64 = length(DIR_PATHS)
@@ -1224,7 +1224,7 @@ module Ronin
     Returns a DataFrame with each row containing info about a regression for a specific λ, the values of the regression coefficients 
         for each input feature, and the Root Mean Square Error of the resultant regression. 
     """
-    function get_feature_importance(input_file_path::String, λs::Vector{Float32}; pred_threshold::Float32 = .5)
+    function get_feature_importance(input_file_path::String, λs::Vector{Float32}; pred_threshold::Float32 = .5f0)
 
 
         MLJ.@load LogisticClassifier pkg=MLJLinearModels
@@ -1365,7 +1365,7 @@ module Ronin
     Which gates were misclassified as non-meteorological data relative to interactive QC 
     """
     function error_characteristics(file_path::String, config_file_path::String, model_path::String;
-        indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float32 = .5, write_out::Bool=false,
+        indexer_var::String="VV", QC_variable::String="VG", decision_threshold::Float32 = .5f0, write_out::Bool=false,
         output_name::String="Model_Error_Characteristics.h5")
 
 
@@ -2055,7 +2055,7 @@ module Ronin
     """
     
     function write_field(filepath::String, fieldname::String, NEW_FIELD, overwrite::Bool = true; 
-                attribs::Dict = Dict("" => ""), dim_names::Tuple=("range", "time"), verbose::Bool=true, fillval::Float32 = Float32(-32000.))
+                attribs::Dict = Dict("" => ""), dim_names::Tuple=("range", "time"), verbose::Bool=true, fillval::Float32 = -32000.f0)
             
         Dataset(filepath, "a") do input_set 
             try 
@@ -2100,11 +2100,11 @@ module Ronin
         * `prec_score::Float32` -> Precision Score, defined as number of true positives divided by sum of true positives and false positives 
         * `recall::Float32` Recall, defined as number of true positives divided by sum of true positives and false negatives 
         * `f1::Float32` F1 score 
-        * `true_positives::Float32` Number of true positives 
-        * `false_positives::Float32` Number of false positives 
-        * `true_negatives::Float32` Number of true negatives 
-        * `false_negatives::Float32` Number of false negatives 
-        * `num_gates::Float32` Total number of classifications 
+        * `true_positives::Int` Number of true positives 
+        * `false_positives::Int` Number of false positives 
+        * `true_negatives::Int` Number of true negatives 
+        * `false_negatives::Int` Number of false negatives 
+        * `num_gates::INt` Total number of classifications 
 
     """
     function evaluate_model(predictions::Vector{Bool}, targets::Vector{Bool})
@@ -2115,10 +2115,10 @@ module Ronin
         tn_idx = (predictions .== 0) .& (targets .==0)
         fn_idx = (predictions .== 0) .& (targets .==1)
 
-        prec = sum(tp_idx) / (sum(tp_idx) + sum(fp_idx))
-        recall = sum(tp_idx) / (sum(tp_idx) + sum(fn_idx))
+        prec = Float32(sum(tp_idx) / (sum(tp_idx) + sum(fp_idx)))
+        recall = Float32(sum(tp_idx) / (sum(tp_idx) + sum(fn_idx)))
 
-        f1 = (2 * prec * recall) / (prec + recall) 
+        f1 = Float32((2 * prec * recall) / (prec + recall))
 
         return(prec, recall, f1, sum(tp_idx), sum(fp_idx), sum(tn_idx), sum(fn_idx), length(predictions))
     end 
