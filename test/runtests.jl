@@ -5,16 +5,22 @@ using HDF5
 using NCDatasets
 using BenchmarkTools 
 using StatsBase
+using Scratch
+
+
+global scratchspace = @get_scratch!("ronin_testing")
+
 
 ###Will undergo a basic training/QC pipeline. Model is not meant to output 
 ###Correct results, but rather simply show that it can produce data, train a model, 
 ###and correctly apply the model to a scan. 
 
+###The below will be testing for a single-pass model
+
 TRAINING_PATH = "../BENCHMARKING/benchmark_cfrads/"
 config_file_path = "../BENCHMARKING/benchmark_setup/config.txt"
 sample_model = "../BENCHMARKING/benchmark_setup/benchmark_model.joblib"
 ###Read in tasks
-
 
 ###NEED TO ALLOW THIS TO IGNORE COMMENTS 
 tasks = Ronin.get_task_params(config_file_path)
@@ -38,19 +44,24 @@ std_window::Tuple{Int64, Int64} = (5,5)
 
 weight_matrixes = [placeholder_matrix, placeholder_matrix, std_weights, placeholder_matrix, placeholder_matrix, iso_weights]
 
-calculate_features(TRAINING_PATH, tasks, weight_matrixes, 
-                    "garbage.h5", true; verbose=true, 
+path1 = joinpath(scratchspace, "_1.h5")
+path2 = joinpath(scratchspace, "_2.h5")
+
+X, Y, idxers_1 = calculate_features(TRAINING_PATH, tasks, weight_matrixes, 
+                    path1, true; verbose=true, 
                     REMOVE_LOW_NCP = true, REMOVE_HIGH_PGG = true, 
-                    QC_variable="VG", remove_variable="VV")
+                    QC_variable="VG", remove_variable="VV", return_idxer = true)
 
 
 ###Ensure multiple dispatch is functioning properly and giving us the same results 
-calculate_features(TRAINING_PATH, config_file_path, "garbage_2.h5", true,
+X, Y, idxers_2 = calculate_features(TRAINING_PATH, config_file_path, path2, true,
                     verbose=true, REMOVE_LOW_NCP = true, 
-                    REMOVE_HIGH_PGG = true, remove_variable = "VV", QC_variable="VG")
+                    REMOVE_HIGH_PGG = true, remove_variable = "VV", QC_variable="VG", return_idxer = true)
 
-h5open("garbage.h5") do f
-    h5open("garbage_2.h5") do f2
+@assert idxers_1 == idxers_2 
+
+h5open(path1) do f
+    h5open(path2) do f2
         print(f["X"][begin:5,:])
         print(f2["X"][begin:5,:])
         @assert map(round, f["X"][begin:10, :]) == map(round, f2["X"][begin:10, :])
@@ -59,12 +70,14 @@ end
 
 ###Also ensure that both are equal to a pre-set version of the benchmark 
 
-h5open("garbage.h5") do f 
+print("OK")
+h5open(path1) do f 
     h5open("../BENCHMARKING/standard_bench_file.h5") do f2
         @assert map(round, f["X"][:,:]) == map(round, f2["X"][:,:])
     end 
 end 
 
+print("OK2")
 X = Matrix{Float64}(undef, 0, 6)
 Y = Matrix{Float64}(undef, 0, 1)
 
@@ -78,8 +91,9 @@ for cfrad_name in readdir(TRAINING_PATH)
         rm(TRAINING_PATH * cfrad_name, force=true, recursive = true) 
         continue
     end 
+
     Dataset(TRAINING_PATH * cfrad_name) do f
-        X_new, Y_new, indexer = Ronin.process_single_file(f, config_file_path; HAS_MANUAL_QC=true, REMOVE_LOW_NCP=true, REMOVE_HIGH_PGG=true, QC_variable = "VG", 
+        X_new, Y_new, indexer = Ronin.process_single_file(f, config_file_path; HAS_INTERACTIVE_QC=true, REMOVE_LOW_NCP=true, REMOVE_HIGH_PGG=true, QC_variable = "VG", 
                                                     remove_variable = "VV", replace_missing = false) 
         global X
         global Y
@@ -146,13 +160,6 @@ end
 printstyled("QC_SCAN AVERAGE TIME FOR 10 SCANS: $(mean(times)) seonds \n", color=:green)
 
 
-
-###Clean up
-printstyled("\nCLEANING UP....\n", color=:green)
-isfile("garbage.h5") ? rm("garbage.h5") : ""
-isfile("garbage_2.h5") ? rm("garbage_2.h5") : ""
-
-
-
+###Begin testing the trainin of multi-model configurations 
 
 
