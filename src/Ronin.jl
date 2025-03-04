@@ -27,7 +27,7 @@ module Ronin
     export QC_scan, get_QC_mask
     export predict_with_model, evaluate_model, get_feature_importance, error_characteristics
     export train_multi_model, ModelConfig, composite_prediction, get_contingency, compute_balanced_class_weights
-    export multipass_uncertain, write_field 
+    export multipass_uncertain, write_field, characterize_misclassified_gates
 
 
 
@@ -2576,7 +2576,7 @@ module Ronin
         if ! config.write_out
             throw("Error: evaluate_model must write features to disk. Please set config.write_out to trues")
         end 
-f
+
         if ! models_trained 
             train_multi_model(config)
         end 
@@ -2646,7 +2646,145 @@ f
     end 
 
 
-    
 
-    
+    """
+    `characterize_misclassified_gates(config::ModelConfig; model_pretrained::Bool = true, features_precalculated::Bool = true)` 
+
+    Function used to apply composite model to a set of gates, returning information about gate classifications and their associated input features 
+
+    ## Required inputs 
+
+    ```julia 
+        config::ModelConfig 
+    ```
+    Model configuration object containing setup information. 
+
+    ## Optional Inputs 
+
+    ```julia 
+    model_pretrained::Bool = true 
+    ```
+
+    Model training in this function not currently implemented, setting to false with untrained models will result in errors. 
+
+    ```julia 
+    features_precalculated::Bool = true 
+    ```
+    Whether or not the input features for the model have already been written to disk. 
+
+    Not currently implemented. 
+
+    ## 
+
+    ## Returns 
+    Vector of dataframes (one DataFrame for each model "pass"). DataFrames will only contain information about gates reciving their final classification 
+    during that pass of the model. That is, if a gate exceeds the `met_probs` thresholds and is not passed on to the next pass, it will be represented in the 
+    DataFrame corresponding to that present pass of the model. 
+    """
+    function characterize_misclassified_gates(config::ModelConfig; model_pretrained::Bool = true, features_precalculated::Bool = true) 
+        ###Output features 
+        ###Issue here is that we will need to feed-forward the predictions to properly calculate features. 
+        # if ! features_precalculated
+
+        #     for (i, output_path) in enumerate(config.model_output_paths)
+        #         out = config.feature_output_paths[i] 
+        #         currt = config.task_paths[i]
+        #         cw = config.task_weights[i]
+
+        #         ##If execution proceeds past the first iteration, a composite model is being created, and 
+        #         ##so a further mask will be applied to the features 
+        #         if i > 1
+        #             QC_mask = true 
+        #         else 
+        #             QC_mask = config.QC_mask 
+        #         end 
+        
+        #         QC_mask ? mask_name = config.mask_names[i] : mask_name = ""
+
+
+        #         printstyled("\nCALCULATING FEATURES FOR PASS: $(i)\n", color=:green)
+
+        #             ###Check to see if the features file already exists, if so, delete it so 
+        #             ###that it may be overwritten 
+        #             if config.write_out & config.overwrite_output
+        #                 isfile(out) ? rm(out) : ""
+        #             end 
+
+        #             X,Y = calculate_features(config.input_path, currt, out, true; 
+        #                                 verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
+        #                                 REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
+        #                                 remove_variable = config.remove_var, replace_missing = config.replace_missing,
+        #                                 write_out = config.write_out, QC_mask = QC_mask, mask_name = mask_name, weight_matrixes=cw)
+                                        
+        #     end 
+
+        # end 
+        ###In the simplest case, the model is already pretrained and the features have been calculated. Thus, 
+        ###predict with the model
+
+
+        ###Key will be figuring out which gates are predicted on in each pass.
+        ###Use these to hold the features and successful or unsuccessful predictions 
+        accuracy = Vector{Bool}[]
+        features = Matrix{Float32}(undef, 0, 0)
+        pass_no = Vector{Bool}[] 
+        ret = Dict{Int, DataFrame}()
+        for (i, model) in enumerate(config.model_output_paths)
+
+            if i < config.num_models 
+                currmodel = load_object(model) 
+
+                input_data = h5open(config.feature_output_paths[i]) 
+                currfeatures = input_data["X"][:,:] 
+                currtargets  = input_data["Y"][:,:][:]
+                curr_thresh = config.met_probs[i] 
+
+                met_probs = DecisionTree.predict_proba(currmodel, currfeatures)[:, 1]
+
+                ###Locations where the probability is greater than max prob (classified as meteorological) 
+                ###Or less than/equal to minimum probability (classified as non-meteorological)
+                curr_idxer = (met_probs .<= minimum(met_probs) ) .|| (met_probs .> maximum(met_probs))
+
+
+                predictions = met_probs[curr_idxer] .> .5
+                verif = predictions .== currtargets[curr_idxer]
+                features_of_interest = currfeatures[curr_idxer, :]
+                feature_names = attrs(input_data)["Parameters"]
+
+                close(input_data)
+
+                df = DataFrame(features_of_interest, feature_names; makeunique=true)
+                df[:, "VERIFICATION"] = verif 
+                df[:, "MET_PROBS"] = met_probs[curr_idxer] 
+
+                ret[i] = df
+
+            else ###last model in the chain so we don't need to do any indexing 
+
+                currmodel = load_object(model) 
+
+                input_data = h5open(config.feature_output_paths[i]) 
+                currfeatures = input_data["X"][:,:] 
+                currtargets  = input_data["Y"][:,:][:]
+                curr_thresh = config.met_probs[i] 
+
+                met_probs = DecisionTree.predict_proba(currmodel, currfeatures)[:, 1]
+                predictions = met_probs .> .5 
+                verif = predictions .== currtargets 
+                
+                feature_names = attrs(input_data)["Parameters"]
+                
+                close(input_data) 
+
+                df = DataFrame(currfeatures, feature_names; makeunique=true)
+                df[:, "VERIFICATION"] = verif 
+                df[:, "MET_PROBS"] = met_probs 
+
+                ret[i] = df 
+            end 
+
+        end 
+        ret
+    end
+
 end 

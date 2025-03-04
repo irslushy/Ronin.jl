@@ -27,6 +27,7 @@ QC_scan
 predict_with_model(::String, ::String)
 evaluate_model(::String, ::String, ::String)
 error_characteristics(::String, ::String, ::String) 
+characterize_misclassified_gates
 ```
 
 ## Predicting using a composite model 
