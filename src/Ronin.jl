@@ -50,7 +50,10 @@ module Ronin
     ```
     Vector containing the decision range for a gate to be considered meteorological in each model in the chain. Example, if set to (.9, 1), 
         > 90% of trees in the random forest must assign a gate a label of meteorological for it to be considered meteorological. 
-        The range is exclusive on the lower end and inclusive on the high end. Form is (low_threshold, high_threshold)
+        The range is exclusive on both ends. That is, for a gate to be classified as non-meteorological, it must have
+        a probability LESS THAN the low threshold, and for a gate to be classified as meteorological it must have 
+        a probability GREATER THAN the high threshold. For multi-pass models, gates between these thresholds (inclusive) will 
+        be sent on to the next pass. Form is (low_threshold, high_threshold)
 
     ```julia
     feature_output_paths::Vector{String}
@@ -2265,7 +2268,9 @@ module Ronin
                 ### will be the ones between the thresholds, (inclusive on both ends)
                 met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
                 curr_probs[indexer] .= met_probs[:]
-    
+                
+                met_threshold = maximum(curr_proba) 
+                nmd_threshold = minimum(curr_proba)
         
                 if i == 1
                     init_idxer = copy(indexer)
@@ -2273,8 +2278,8 @@ module Ronin
                     ###Instantiate prediction vector - the gates that meet the basic thresholds/masking on pass 1 are the ones we want to predict on 
                     final_predictions = fill(false, sum(indexer))
                         ###Set gates below predicted threshold to non-met 
-                    final_predictions[met_probs .< curr_proba[1]] .= false
-                    final_predictions[met_probs .> curr_proba[2]] .= true 
+                    final_predictions[met_probs .< nmd_threshold] .= false
+                    final_predictions[met_probs .> met_threshold] .= true 
     
                 elseif i == config.num_models
                     
@@ -2287,8 +2292,8 @@ module Ronin
                     curr_preds = final_predictions[valid_idxs]
 
                     ###Final pass: just take the model's (majority vote) predictions for the class of the gates and we're done! 
-                    curr_preds[met_probs .>= maximum(curr_proba)] .= true
-                    curr_preds[met_probs .<  maximum(curr_proba)] .= false
+                    curr_preds[met_probs .>= met_threshold] .= true
+                    curr_preds[met_probs .<  nmd_threshold] .= false
                     ###Reassign 
                     final_predictions[valid_idxs] .= curr_preds
                 else 
@@ -2296,8 +2301,8 @@ module Ronin
                     valid_idxs = indexer[init_idxer]
                     ###Grab locations in the prediction vector where this pass is being applied.
                     curr_preds = final_predictions[valid_idxs]
-                    curr_preds[met_probs .< curr_proba[1]] .= false
-                    curr_preds[met_probs .> curr_proba[2]] .= true 
+                    curr_preds[met_probs .< nmd_threshold] .= false
+                    curr_preds[met_probs .> met_threshold] .= true 
 
                     final_predictions[valid_idxs] .= curr_preds
 
@@ -2307,7 +2312,7 @@ module Ronin
                 ###clear it for the next scan. Just pass it to QC_mask 
                 ###If this wasn't the last pass, need to write a mask for the gates to be predicted upon in the next iteration 
                 if i < config.num_models 
-                    gates_of_interest = (met_probs .>= curr_proba[1]) .& (met_probs .<= curr_proba[2])
+                    gates_of_interest = (met_probs .>= nmd_threshold) .& (met_probs .<= met_threshold)
             
                     @assert length(gates_of_interest) == sum(indexer) 
     
@@ -2648,6 +2653,115 @@ module Ronin
 
 
     """
+    `construct_next_pass_features(config::ModelConfig)`
+    Function used to iteratively calculate the input features for a multi-pass model. Operates on a sweep-by-sweep basis by taking in 
+    some set of gates, calculating features on the gates, applying a pre-trained model, and finally determining which gates are between 
+    the specified thresholds (inclusive on both ends) so that they can be passed on to the next model. 
+
+    """
+    function construct_next_pass_features(config::ModelConfig, curr_model_num::Int; write_out::Bool=true)
+
+        ##If this was the last pass, we don't need to write out a mask, and we're done!
+                ###Otherwise, we need to mask out the features we want to apply the model to on the next pass 
+        @assert curr_model_num <= config.num_models
+
+        curr_model = load_object(config.model_output_paths[curr_model_num]) 
+        curr_metprobs = config.met_probs[curr_model_num]
+        curr_tasks = config.task_paths[curr_model_num]
+        curr_weights = config.task_weights[curr_model_num]
+        curr_out = config.feature_output_paths[curr_model_num] 
+        output_cols = get_num_tasks(curr_tasks)
+
+        paths = Vector{String}() 
+        file_path = config.input_path
+
+        ##If execution proceeds past the first iteration, a composite model is being created, and 
+        ##so a further mask will be applied to the features 
+        if curr_model_num > 1
+            QC_mask = true 
+        else 
+            QC_mask = config.QC_mask 
+        end 
+
+        QC_mask ? mask_name = config.mask_names[curr_model_num] : mask_name = ""
+
+        if isdir(file_path) 
+            paths = parse_directory(file_path)
+        else 
+            paths = [file_path]
+        end 
+
+
+
+        newX = X = Matrix{Float64}(undef,0,output_cols)
+        newY = Y = Matrix{Int64}(undef, 0,1) 
+        idxs = Vector{}(undef,0)
+        
+        for path in paths
+
+            dims = Dataset(path) do f
+                (f.dim["range"], f.dim["time"])
+            end 
+            
+            ###NEED to update this if it's beyond two pass so we can pass it the correct mask
+            X, Y, curr_idx = calculate_features(path, curr_tasks, curr_out, true; 
+                                verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
+                                REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
+                                remove_variable = config.remove_var, replace_missing = config.replace_missing, return_idxer=true,
+                                write_out = false, QC_mask = QC_mask, mask_name = mask_name, weight_matrixes=curr_weights)
+        
+            if curr_model_num < config.num_models 
+                met_probs = DecisionTree.predict_proba(curr_model, X)[:, 2]
+                ###Probabilities inclusive on both ends 
+                valid_idxs = (met_probs .>= minimum(curr_metprobs)) .& (met_probs .<= maximum(curr_metprobs))
+                print("RESULTANT GATES: $(sum(valid_idxs))")
+                ##Create mask field, fill it, and then write out
+                new_mask = Matrix{Union{Missing, Float64}}(missings(dims))[:]
+                
+                ##We only care about gates that have met the base QC thresholds, so first index 
+                ##by indexer returned from calculate_features, and then set the gates between
+                ##the specified probability levels to valid in the mask. The next model pass will 
+                ##thus only be calculated upon these features. 
+                idxer = curr_idx[1][:]
+                ###Determine where the gates that meet basic QC threshold are between the met thresholds and assign
+                idxer[idxer] .= Vector{Bool}(valid_idxs)
+                new_mask[idxer] .= 1.
+                new_mask = reshape(new_mask, dims)
+
+                write_field(path, config.mask_names[curr_model_num+1], new_mask, attribs=Dict("Units" => "Bool", "Description" => "Gates between met prob theresholds"))
+            end 
+
+            X = vcat(X, newX)::Matrix{Float64}
+            Y = vcat(Y, newY)::Matrix{Int64}
+
+        end 
+
+        ##Write broader pass features to disk 
+        if write_out
+
+            println("OUTPUTTING DATA IN HDF5 FORMAT TO FILE: $(curr_out)")
+            fid = h5open(curr_out, "w")
+        
+            ###Add information to output h5 file 
+            attributes(fid)["Parameters"] = get_task_params(curr_tasks)
+            attributes(fid)["MISSING_FILL_VALUE"] = model_config.FILL_VAL
+            println()
+            println("WRITING DATA TO FILE OF SHAPE $(size(X))")
+            println("X TYPE: $(typeof(X))")
+
+            write_dataset(fid, "X", X)
+            write_dataset(fid, "Y", Y)
+            close(fid)
+        end
+
+    end 
+
+
+
+
+
+
+    """
     `characterize_misclassified_gates(config::ModelConfig; model_pretrained::Bool = true, features_precalculated::Bool = true)` 
 
     Function used to apply composite model to a set of gates, returning information about gate classifications and their associated input features 
@@ -2684,41 +2798,14 @@ module Ronin
     function characterize_misclassified_gates(config::ModelConfig; model_pretrained::Bool = true, features_precalculated::Bool = true) 
         ###Output features 
         ###Issue here is that we will need to feed-forward the predictions to properly calculate features. 
-        # if ! features_precalculated
-
-        #     for (i, output_path) in enumerate(config.model_output_paths)
-        #         out = config.feature_output_paths[i] 
-        #         currt = config.task_paths[i]
-        #         cw = config.task_weights[i]
-
-        #         ##If execution proceeds past the first iteration, a composite model is being created, and 
-        #         ##so a further mask will be applied to the features 
-        #         if i > 1
-        #             QC_mask = true 
-        #         else 
-        #             QC_mask = config.QC_mask 
-        #         end 
-        
-        #         QC_mask ? mask_name = config.mask_names[i] : mask_name = ""
+        if ! features_precalculated
+            for (i, output_path) in enumerate(config.model_output_paths)
+                construct_next_pass_features(config, i)                        
+            end 
+        end 
 
 
-        #         printstyled("\nCALCULATING FEATURES FOR PASS: $(i)\n", color=:green)
 
-        #             ###Check to see if the features file already exists, if so, delete it so 
-        #             ###that it may be overwritten 
-        #             if config.write_out & config.overwrite_output
-        #                 isfile(out) ? rm(out) : ""
-        #             end 
-
-        #             X,Y = calculate_features(config.input_path, currt, out, true; 
-        #                                 verbose = config.verbose, REMOVE_LOW_NCP = config.REMOVE_LOW_NCP, 
-        #                                 REMOVE_HIGH_PGG=config.REMOVE_HIGH_PGG, QC_variable = config.QC_var, 
-        #                                 remove_variable = config.remove_var, replace_missing = config.replace_missing,
-        #                                 write_out = config.write_out, QC_mask = QC_mask, mask_name = mask_name, weight_matrixes=cw)
-                                        
-        #     end 
-
-        # end 
         ###In the simplest case, the model is already pretrained and the features have been calculated. Thus, 
         ###predict with the model
 
@@ -2729,21 +2816,29 @@ module Ronin
         features = Matrix{Float32}(undef, 0, 0)
         pass_no = Vector{Bool}[] 
         ret = Dict{Int, DataFrame}()
+
         for (i, model) in enumerate(config.model_output_paths)
 
             if i < config.num_models 
+
                 currmodel = load_object(model) 
 
+
+
+                ###IMPORTANT: FOR THE INDEXING HERE, WE PROBABLY DON'T EVEN NEED TO DO THE COMPARISON ON THE PREDICTIONS. 
+                ###NEXT PASS SHOULD ALREADY BE WRITTEN TO A MASK 
                 input_data = h5open(config.feature_output_paths[i]) 
                 currfeatures = input_data["X"][:,:] 
                 currtargets  = input_data["Y"][:,:][:]
                 curr_thresh = config.met_probs[i] 
 
-                met_probs = DecisionTree.predict_proba(currmodel, currfeatures)[:, 1]
+                println("PASS: $(i), INPUT DATA LOCATED AT : $(input_data), PREDICTING ON $(size(currfeatures))")
+
+                met_probs = DecisionTree.predict_proba(currmodel, currfeatures)[:, 2]
 
                 ###Locations where the probability is greater than max prob (classified as meteorological) 
                 ###Or less than/equal to minimum probability (classified as non-meteorological)
-                curr_idxer = (met_probs .<= minimum(met_probs) ) .|| (met_probs .> maximum(met_probs))
+                curr_idxer = (met_probs .< minimum(curr_thresh) ) .|| (met_probs .> maximum(curr_thresh))
 
 
                 predictions = met_probs[curr_idxer] .> .5
@@ -2767,8 +2862,9 @@ module Ronin
                 currfeatures = input_data["X"][:,:] 
                 currtargets  = input_data["Y"][:,:][:]
                 curr_thresh = config.met_probs[i] 
+                println("PASS: $(i), INPUT DATA LOCATED AT : $(input_data), PREDICTING ON $(size(currfeatures))")
 
-                met_probs = DecisionTree.predict_proba(currmodel, currfeatures)[:, 1]
+                met_probs = DecisionTree.predict_proba(currmodel, currfeatures)[:, 2]
                 predictions = met_probs .> .5 
                 verif = predictions .== currtargets 
                 
@@ -2786,5 +2882,7 @@ module Ronin
         end 
         ret
     end
+
+
 
 end 
