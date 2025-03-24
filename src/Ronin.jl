@@ -907,7 +907,10 @@ module Ronin
 
         for path in paths 
             ##Open in append mode so output variables can be written 
-            input_cfrad = NCDataset(path, "a")
+            redirect_stdout(devnull) do
+                input_cfrad = NCDataset(path, "a")
+            end 
+
             cfrad_dims = (input_cfrad.dim["range"], input_cfrad.dim["time"])
 
             ###Will generally NOT return Y, but only (X, indexer)
@@ -1556,7 +1559,11 @@ module Ronin
         predictions = Matrix{Int32}(undef, 0, 1) 
 
         for path in paths   
-            input_cfrad = NCDataset(path, "a")
+
+            redirect_stdout(devnull) do
+                input_cfrad = NCDataset(path, "a")
+            end 
+
             cfrad_dims = (input_cfrad.dim["range"], input_cfrad.dim["time"])
             ###Todo: What do I need to do for parsed args here 
             println("\r\nPROCESSING: $(path)")
@@ -1628,7 +1635,10 @@ module Ronin
 
         for path in paths 
             ##Open in append mode so output variables can be written 
-            input_cfrad = NCDataset(path, "a")
+            redirect_stdout(devnull) do
+                input_cfrad = NCDataset(path, "a")
+            end 
+
             cfrad_dims = (input_cfrad.dim["range"], input_cfrad.dim["time"])
 
             ###Will generally NOT return Y, but only (X, indexer)
@@ -1819,8 +1829,9 @@ module Ronin
     
     
     function QC_scan(input_cfrad::String, features::Matrix{Float64}, indexer::Vector{Bool}, config::ModelConfig, iter::Int64)
-        
-        input_set = NCDataset(input_cfrad, "a") 
+        redirect_stdout(devnull) do 
+            input_set = NCDataset(input_cfrad, "a") 
+        end 
         new_model = load_object(config.model_output_paths[iter])
         decision_threshold = config.met_probs[iter] 
         cfrad_dims = (input_set.dim["range"], input_set.dim["time"])
@@ -1993,7 +2004,11 @@ module Ronin
     function QC_scan(config::ModelConfig, filepath::String, predictions::Vector{Bool}, init_idxer::Vector{Bool})
 
         starttime = time() 
-        input_set = NCDataset(filepath, "a") 
+
+        redirect_stdout(devnull) do
+            input_set = NCDataset(filepath, "a") 
+        end 
+
         sweep_dims = (dimsize(input_set["range"]).range, dimsize(input_set["time"]).time)
 
         for var in config.VARS_TO_QC
@@ -2236,7 +2251,9 @@ module Ronin
                 ###REFACTOR NOTES: I THINK PROCESS_SINGLE_FILE CLOSES THE FILE SO WILL NEED TO CHANGE THAT
                 ###TO MOVE OUTSIDE LOOP 
                 ###We don't need to write these out, just use them briefly 
-                f = NCDataset(file, "a")
+                redirect_stdout(devnull) do
+                    f = NCDataset(file, "a")
+                end 
                 
                 if i > 1
                     QC_mask = true 
@@ -2260,7 +2277,6 @@ module Ronin
                     QC_variable = config.QC_var, replace_missing = config.replace_missing, remove_variable = config.remove_var,
                     mask_features = QC_mask, feature_mask = feature_mask, weight_matrixes=cw)
                 final_idxer = indexer 
-                print(size(X))
     
                 curr_model = models[i]
                 curr_proba = config.met_probs[i]
@@ -2313,7 +2329,11 @@ module Ronin
                 ###If this wasn't the last pass, need to write a mask for the gates to be predicted upon in the next iteration 
                 if i < config.num_models 
                     gates_of_interest = (met_probs .>= nmd_threshold) .& (met_probs .<= met_threshold)
-            
+                    
+                    if sum(gates_of_interest) == 0 
+                        break 
+                    end 
+
                     @assert length(gates_of_interest) == sum(indexer) 
     
                     indexer[indexer] .= gates_of_interest 
