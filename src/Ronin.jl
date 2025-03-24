@@ -907,8 +907,8 @@ module Ronin
 
         for path in paths 
             ##Open in append mode so output variables can be written 
-            redirect_stdout(devnull) do
-                input_cfrad = NCDataset(path, "a")
+            input_cfrad = redirect_stdout(devnull) do
+                NCDataset(path, "a")
             end 
 
             cfrad_dims = (input_cfrad.dim["range"], input_cfrad.dim["time"])
@@ -1560,8 +1560,8 @@ module Ronin
 
         for path in paths   
 
-            redirect_stdout(devnull) do
-                input_cfrad = NCDataset(path, "a")
+            input_cfrad = redirect_stdout(devnull) do
+               NCDataset(path, "a")
             end 
 
             cfrad_dims = (input_cfrad.dim["range"], input_cfrad.dim["time"])
@@ -1635,8 +1635,8 @@ module Ronin
 
         for path in paths 
             ##Open in append mode so output variables can be written 
-            redirect_stdout(devnull) do
-                input_cfrad = NCDataset(path, "a")
+            input_cfrad = redirect_stdout(devnull) do
+               NCDataset(path, "a")
             end 
 
             cfrad_dims = (input_cfrad.dim["range"], input_cfrad.dim["time"])
@@ -1829,8 +1829,9 @@ module Ronin
     
     
     function QC_scan(input_cfrad::String, features::Matrix{Float64}, indexer::Vector{Bool}, config::ModelConfig, iter::Int64)
-        redirect_stdout(devnull) do 
-            input_set = NCDataset(input_cfrad, "a") 
+        
+        input_set = redirect_stdout(devnull) do 
+            NCDataset(input_cfrad, "a") 
         end 
         new_model = load_object(config.model_output_paths[iter])
         decision_threshold = config.met_probs[iter] 
@@ -2005,8 +2006,8 @@ module Ronin
 
         starttime = time() 
 
-        redirect_stdout(devnull) do
-            input_set = NCDataset(filepath, "a") 
+        input_set = redirect_stdout(devnull) do
+           NCDataset(filepath, "a") 
         end 
 
         sweep_dims = (dimsize(input_set["range"]).range, dimsize(input_set["time"]).time)
@@ -2251,8 +2252,8 @@ module Ronin
                 ###REFACTOR NOTES: I THINK PROCESS_SINGLE_FILE CLOSES THE FILE SO WILL NEED TO CHANGE THAT
                 ###TO MOVE OUTSIDE LOOP 
                 ###We don't need to write these out, just use them briefly 
-                redirect_stdout(devnull) do
-                    f = NCDataset(file, "a")
+                f = redirect_stdout(devnull) do
+                    NCDataset(file, "a")
                 end 
                 
                 if i > 1
