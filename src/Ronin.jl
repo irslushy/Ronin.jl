@@ -443,6 +443,7 @@ module Ronin
 
             write_dataset(fid, "X", X)
             write_dataset(fid, "Y", Y)
+            
             close(fid)
             if return_idxer
                 return X, Y, idxs
