@@ -4,6 +4,11 @@ using Base.Threads
 include("./RoninConstants.jl")
 
 
+
+
+
+
+
 function missing_std(data)
 
     if count(ismissing, data) == length(data)
@@ -14,7 +19,6 @@ function missing_std(data)
 end 
 
 function missing_avg(data)
-
     if count(ismissing, data) == length(data)
         return FILL_VAL  
     end 
@@ -464,6 +468,7 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
         
 
         ###The only case that will need to be modified outside of the end indexer is the spatial parameters
+        ###If we get a mask, spatial parameter 
         if (!isnothing(regex_match))
 
             startTime = time() 
@@ -476,21 +481,26 @@ function process_single_file(cfrad::NCDataset, argfile_path::String;
                 weight_matrix = weight_matrixes[i] 
                 window_size = size(weight_matrix)
             else 
+                ###grab the default weights 
                 currname = Symbol(lowercase(regex_match[1]) * "_weights")
                 weight_matrix = @eval($currname)
                 window_size = size(weight_matrix)
             end 
 
+            currdat = cfrad[var][:,:]
 
             if mask_features
-                currdat = cfrad[var][:,:]
                 ##Set invalid data to missing for spatial parameter calculations. This way, they 
                 ##will be ignored. 
                 currdat[.! feature_mask] .= missing 
+
                 raw = @eval $func($currdat)[:]
-            else 
+                
+            else
+                #raw = @eval slide_window(currdat, weight_matrix, $func)[:]
                 raw = @eval $func($cfrad[$var][:,:]; weights=$weight_matrix, window = $window_size )[:]
             end 
+
 
             filled = [ismissing(x) || isnan(x) ? Float32(FILL_VAL) : Float32(x) for x in raw]
         
