@@ -223,8 +223,8 @@ function clean_config()
     ###len(weight_vector) is enforced to be equal to num_models (should have a set of weights for each pass) 
     task_weights = [weight_vec, weight_vec] 
     
-    base_name = "raw_model"
-    base_name_features = "output_features" 
+    base_name = joinpath(scratchspace, "raw_model")
+    base_name_features = joinpath(scratchspace, "output_features")
     ###List of paths to output trained models to. Enforced to be same size as num_models 
     model_output_paths = [base_name * "_$(i-1).jld2" for i in 1:num_models ]
     ###List of paths to output calculated features to. Enforced to be same size as num_models 
