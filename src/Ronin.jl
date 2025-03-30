@@ -2076,20 +2076,24 @@ module Ronin
 
     """
     
-    function write_field(filepath::String, fieldname::String, NEW_FIELD, overwrite::Bool = true; 
-                attribs::Dict = Dict("" => ""), dim_names::Tuple=("range", "time"), verbose::Bool=true, fillval::Float32 = -32000.f0)
-            
+    function write_field(filepath::String, fieldname::String, NEW_FIELD; overwrite::Bool = true, 
+                attribs::Dict = Dict(), dim_names::Tuple=("range", "time"), verbose::Bool=true, fillval::Float32 = FILL_VAL)
+        
+        if ! isfile(filepath) 
+            ds = NCDataset(filepath, "c") 
+            close(ds) 
+        end 
+
         Dataset(filepath, "a") do input_set 
             try 
                 print(input_set)
                 defVar(input_set, fieldname, NEW_FIELD, dim_names, fillvalue = fillval; attrib=attribs)
             catch e
-                print(e)
-                print("INPUT_SET $(typeof(input_set)), VAR: $(typeof(fieldname))")
+                println(e)
                 ###Simply overwrite the variable 
                 if e.msg == "NetCDF: String match to name in use" && (overwrite)
                     if verbose
-                        println("Already exists... overwriting") 
+                        println("$(fieldname) Already Exists in $(filepath)... overwriting") 
                     end 
                     input_set[fieldname][:,:] = NEW_FIELD 
 
@@ -2103,7 +2107,7 @@ module Ronin
                     end 
                     ##Copy over new attributes 
                 else 
-                    close(filepath)
+                    close(input_set)
                     throw(e)
                 end 
             end 
@@ -2379,6 +2383,7 @@ module Ronin
     """
     function characterize_misclassified_gates(config::ModelConfig; model_pretrained::Bool = true, features_precalculated::Bool = true) 
         ###Output features 
+
         ###Issue here is that we will need to feed-forward the predictions to properly calculate features. 
         if ! features_precalculated
             for (i, output_path) in enumerate(config.model_output_paths)

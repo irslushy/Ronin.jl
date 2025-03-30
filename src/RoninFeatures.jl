@@ -3,12 +3,6 @@ using NCDatasets
 using Base.Threads 
 include("./RoninConstants.jl")
 
-
-
-
-
-
-
 function missing_std(data)
 
     if count(ismissing, data) == length(data)

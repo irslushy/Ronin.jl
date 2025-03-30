@@ -20,6 +20,7 @@ global scratchspace = @get_scratch!("ronin_testing")
 TRAINING_PATH = "../BENCHMARKING/benchmark_cfrads/"
 config_file_path = "../BENCHMARKING/benchmark_setup/config.txt"
 sample_model = "../BENCHMARKING/benchmark_setup/benchmark_model.joblib"
+NOAA_PATH =  "../BENCHMARKING/benchmark_NOAA_cfrads"
 ###Read in tasks
 
 ###NEED TO ALLOW THIS TO IGNORE COMMENTS 
@@ -520,4 +521,121 @@ prec, recall, f1, tp, tn, fp, fn, n = evaluate_model(sample_predictions, sample_
 @assert f1 == (2/((1/prec) + (1/recall)))
 @assert tp == tn == fp == fn == 1
 @assert n == length(sample_predictions) == length(sample_targets)
+################################################################################################################################
+
+
+
+################################################################################################################################
+###Test evaluate_model functionality 
+##Test pretrained versus non-pretrained models 
+config = clean_config() 
+config.input_path = NOAA_PATH
+
+for model_path in config.model_output_paths
+    isfile(model_path) ? rm(model_path) : ""
+end 
+
+model_stats = evaluate_model(config) 
+## Ensure model files exist 
+for model_path in config.model_output_paths 
+    @assert isfile(model_path) 
+end 
+sleep(5) 
+## Run it again, ensure these files are not overwritten 
+model_stats_two = evaluate_model(config; models_trained=true)
+for model_path in config.model_output_paths 
+    @assert (Base.time() - mtime(model_path)) > 5 
+end 
+
+@assert model_stats == model_stats_two 
+
+###Apply interacive version of the quality control and ensure that results are consistent 
+predictions = [] 
+targets = [] 
+###Test this by interactively going through the models
+###start by opening the first model 
+predictions = [] 
+targets = [] 
+###Test this by interactively going through the models
+###start by opening the first model 
+for (i, model) in enumerate(config.model_output_paths)
+    currm = load_object(model) 
+
+    currh5 = h5open(config.feature_output_paths[i])
+    currfeatures = currh5["X"][:,:]
+    currtargets = currh5["Y"][:,:][:]
+    close(currh5) 
+
+    push!(predictions, DecisionTree.predict_proba(currm, currfeatures))
+    push!(targets, currtargets)
+
+    ###Construct prediction vector  
+end 
+
+
+total_predictions = fill(-1, length(predictions[1][:,2]))
+total_targets =  fill(-1, length(predictions[1][:,2]))
+idxer = fill(true, length(predictions[1][:,2]))
+still_to_predict = fill(true, length(predictions[1][:,2]))
+
+###iteratively construct predictions vector 
+###THIS IS ALSO TECHNICALLY NOT TESTING THIS ON A NEW SET OF FEATURES, BUT RATHER ONES THAT 
+###HAVE ALREADY BEEN CALCULATED 
+for (i, prediction_vec) in enumerate(predictions) 
+
+    ###All the gates are still to be predicted upon 
+    cp_mps = predictions[i][:,2]
+    cp_metprobs = config.met_probs[i]
+    ###Subset of gates from current pass to be predicted upon 
+    curr_idx = (cp_mps .< cp_metprobs[1]) .| (cp_mps .> cp_metprobs[2])
+    println(sum(curr_idx))
+    curr_predictions = cp_mps .> fp_metprobs[2]
+    ###We predict where both still_to_predict is 1, and curr_idx is 1 
+    ###Still_to_predict will have a value of 1s at all locations 
+    ###Just overwrite the next set of predictions too 
+
+    ###At the valid locations in the current idxer, we will write gates 
+    total_predictions[still_to_predict] .= curr_predictions 
+    still_to_predict[still_to_predict] .= .! curr_idx
+
+end 
+_prec, _rec, _f1, _tp, _fp, _tn, _fn, _tot = evaluate_model(Vector{Bool}(total_predictions), Vector{Bool}(targets[1])) 
+@assert _prec == model_stats[1, "precision"] 
+@assert _rec  == model_stats[1, "recall"]
+@assert _f1   == model_stats[1, "f1"]
+@assert _fp   == model_stats[1, "false_positives"]
+################################################################################################################################
+
+
+###############################################Test `Write_field`###############################################################
+###Start by making it create a new NetCDF file 
+nc_out_path = joinpath(scratchspace, "sample.nc") 
+###Write out sample_DBZ 
+write_field(nc_out_path, "SAMPLE_DBZ", sample_DBZ, true) 
+###Test that it was written correctly 
+NCDataset(nc_out_path) do f 
+    @assert f["SAMPLE_DBZ"][:,:] == sample_DBZ
+end 
+###Test overwriting 
+new_DBZ = fill(0.f0, size(sample_DBZ))
+write_field(nc_out_path, "SAMPLE_DBZ", new_DBZ, true) 
+NCDataset(nc_out_path) do f 
+    @assert f["SAMPLE_DBZ"][:,:] == sample_DBZ 
+end 
+###Make sure it doesn't overwrite if overwrite is set to false 
+try     
+    write_field(nc_out_path, "SAMPLE_DBZ", sample_DBZ; overwrite=false, attribs=Dict())
+catch Exception 
+     
+else 
+    @assert false 
+end 
+
+test_attrs = Dict("TEST_ATTR_ONE" => 3.14159265, "TEST_ATTR_TWO" => "Pi")
+write_field(nc_out_path, "SAMPLE_DBZ"; overwrite=true, attribs=test_attrs)
+read_attrs = NCDataset(nc_out_path, "r") do currf
+    Dict(currf["SAMPLE_DBZ"].attrib)
+end 
+@assert test_attrs["TEST_ATTR_ONE"] == read_attrs["TEST_ATTR_ONE"] 
+
 ################################################################################################################################
