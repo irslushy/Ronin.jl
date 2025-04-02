@@ -69,6 +69,8 @@ h5open(path1) do f
     end
 end 
 
+
+
 ###Also ensure that both are equal to a pre-set version of the benchmark 
 
 print("OK")
@@ -264,6 +266,65 @@ end
 ################################################################################################################################
 
 
+################################################################################################################################
+##Create a toy sized cfradial file that we know the exact values of calculations for 
+ds_path = joinpath(scratchspace, "sample_set.nc")
+isfile(ds_path) && rm(ds_path)
+ds = NCDataset(ds_path, "c")
+# import Base.size
+# import Base.length 
+# function size(v::Matrix{Union{Missing, Float32}}, dim::Int64)
+    
+#     return 5
+# end 
+
+# function length(v::Nothing)
+#     return 5
+# end 
+####start with 5x5 
+range_dim = 5
+time_dim  = 5
+
+times = collect(1:1:5)
+ranges = collect(1:1:5)
+
+sample_DBZ = Matrix{Union{Missing, Float32}}(reshape(sample(1:65, range_dim*time_dim),(range_dim, time_dim)))
+sample_VEL = Matrix{Float32}(reshape(sample(-20:20, range_dim*time_dim), (range_dim, time_dim)))
+sample_NCP = fill(1., (range_dim, time_dim))
+sample_NCP[:,1] .= .1
+
+sample_PGG = fill(.1, (range_dim, time_dim))
+sample_PGG[1,:] .= 1
+
+sample_VG = Matrix{Union{Missing, Float32}}(sample_VEL)
+###Collocate with the low values of NCP 
+sample_VG[:,1] .= missing
+###Add center ro 
+sample_VG[3,:] .= missing 
+
+defDim(ds, "range", range_dim)
+defDim(ds, "time", time_dim)
+
+tv = defVar(ds, "time", Float32, ("time",), attrib=Dict("units" => "s"))
+tv[:] = times
+
+rv = defVar(ds, "range", Float32, ("range",), attrib=Dict("units" => "m"))
+rv[:] = ranges
+
+NCP = defVar(ds, "NCP", Float32, ("range", "time"), attrib=Dict("units" => "NCP units"))
+NCP[:,:] = sample_NCP 
+
+
+
+VEL = defVar(ds, "VEL", Float32, ("range", "time"), attrib=Dict("units" => "m/s"))
+VEL[:,:] = sample_VEL
+
+defVar(ds, "DBZ", sample_DBZ, ("range", "time"), attrib=Dict("units" => "log"))
+defVar(ds, "PGG", sample_PGG, ("range", "time"), attrib=Dict("units" => "percent"))
+defVar(ds, "VG", sample_VG, ("range", "time"), attrib=Dict("units" => "m/s"))
+
+close(ds)
+################################################################################################################################
 
 ################################################################################################################################
 ###Tests to ensure that removal based on NCP works as expected 
@@ -637,5 +698,57 @@ read_attrs = NCDataset(nc_out_path, "r") do currf
     Dict(currf["SAMPLE_DBZ"].attrib)
 end 
 @assert test_attrs["TEST_ATTR_ONE"] == read_attrs["TEST_ATTR_ONE"] 
+
+################################################################################################################################
+
+
+
+################################################################################################################################
+###Test that missing_std and missing_avg have expected behavior 
+@assert Ronin.missing_std([missing, missing]) == Ronin.FILL_VAL
+@assert Ronin.missing_std([missing, 3, 4])    == std([3, 4]) 
+@assert Ronin.missing_avg([missing, missing]) == Ronin.FILL_VAL
+@assert Ronin.missing_avg([missing, 3, 4])    == avg([3,4])
+################################################################################################################################
+
+################################################################################################################################
+###Test that calc_ncp and calc_rng function as expected 
+NCDataset(ds_path) do ds 
+    @assert Ronin.calc_ncp(ds) == Vector{Float32}(sample_NCP[:])
+    @assert Ronin.calc_rng(ds) == repeat(ds["range"][:], 1, length(ds["time"]))
+end 
+################################################################################################################################
+
+################################################################################################################################
+###Test that all three multiple dispatch versions of _weighted_func work as expected 
+@assert Ronin._weighted_func([1 2; 1 2], [3 4; 3 4], std) == std([1*3 2*4; 1*3 2*4])
+
+v1 = AbstractMatrix{Union{Float32, Missing}}([1 missing; 1 2])
+v3 = Matrix{Float32}([1 2; 1 2])
+v2 = AbstractMatrix{Union{Missing, Float32}}([3 4; 3 4])
+@assert Ronin._weighted_func(v1, v2, Ronin.missing_std) == Float32(std([3,3,8]))
+
+@assert Ronin._weighted_func(v3, v2, Ronin.missing_std) == Float32(std([3 8; 3 8]))
+################################################################################################################################
+
+################################################################################################################################
+##Test isolation calculation functions 
+sample_iso_array = [1.f0 missing 1.f0; 1.f0 1.f0 missing; missing missing missing]
+expected_iso = [1.0f0 2.0f0 2.0f0; 3.0f0 5.0f0 5.0f0; 2.0f0 4.0f0 3.0f0]
+calced_iso = Ronin.calc_iso(sample_iso_array; weights = fill(1.f0, (3,3)), window=(3,3))
+@assert calced_iso == expected_iso 
+
+###Test multiple dispatch version with weights maybe 
+
+sample_iso_array = Matrix{Union{Float32, Missing}}(fill(1.0f0, (3,3)))
+sample_iso_weights = Matrix{Union{Missing, Float32}}(fill(missing, (3,3)))
+@assert map(ismissing, Ronin.calc_iso(sample_iso_array; weights=sample_iso_weights, window=(3,3))) == fill(true, (3,3))
+################################################################################################################################
+
+
+################################################################################################################################
+###Test get_num_tasks 
+
+
 
 ################################################################################################################################
