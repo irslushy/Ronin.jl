@@ -58,19 +58,18 @@ end
 function calc_iso(var::AbstractMatrix{Union{Missing, Float32}};
     weights::Matrix{Union{Missing, Float32}} = iso_weights, 
     window = iso_window)
-    ###Where is missing? 
-    missings = map((x) -> Float32(ismissing(x)), var)
     ###Calculate sum of missing gates in the windowed area for each gate in scan 
+    missings = map((x) -> Float32(ismissing(x)), var)
     iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window, border=Fill(0.0f0)) 
 end
 
-##Calculate the isolation of a given variable 
-###These actually don't necessarily need to be functions of their own, could just move them to
-###Calls to _weighted_func 
-function calc_iso(var::AbstractMatrix{Union{Missing, Float32}}; weights = iso_weights, window = iso_window)
-    missings = map((x) -> Float32(ismissing(x)), var)
-    iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window, border=Fill(0.0f0)) 
-end
+# ##Calculate the isolation of a given variable 
+# ###These actually don't necessarily need to be functions of their own, could just move them to
+# ###Calls to _weighted_func 
+# function calc_iso(var::AbstractMatrix{Union{Missing, Float32}}; weights::Abstra = iso_weights, window = iso_window)
+#     missings = map((x) -> Float32(ismissing(x)), var)
+#     iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window, border=Fill(0.0f0)) 
+# end
 
 function airborne_ht(elevation_angle::Float32, antenna_range::Float32, aircraft_height::Float32)
     ##Initial heights are in meters, convert to km 
