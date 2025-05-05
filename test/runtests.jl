@@ -287,6 +287,8 @@ time_dim  = 5
 
 times = collect(1:1:5)
 ranges = collect(1:1:5)
+alt_step = 5
+alts = collect(2000:5:2000 + (length(ranges) - 1) * alt_step)
 
 sample_DBZ = Matrix{Union{Missing, Float32}}(reshape(sample(1:65, range_dim*time_dim),(range_dim, time_dim)))
 sample_VEL = Matrix{Float32}(reshape(sample(-20:20, range_dim*time_dim), (range_dim, time_dim)))
@@ -311,10 +313,11 @@ tv[:] = times
 rv = defVar(ds, "range", Float32, ("range",), attrib=Dict("units" => "m"))
 rv[:] = ranges
 
+altitude = defVar(ds, "altitude", Float32, ("time", ), attrib=Dict("units" => "m"))
+altitude[:] = alts 
+
 NCP = defVar(ds, "NCP", Float32, ("range", "time"), attrib=Dict("units" => "NCP units"))
 NCP[:,:] = sample_NCP 
-
-
 
 VEL = defVar(ds, "VEL", Float32, ("range", "time"), attrib=Dict("units" => "m/s"))
 VEL[:,:] = sample_VEL
@@ -713,9 +716,14 @@ end
 
 ################################################################################################################################
 ###Test that calc_ncp and calc_rng function as expected 
+
+alt_map = repeat(transpose(alts),length(ranges), 1)
+rng_map = repeat(ranges, 1, length(times))
+
 NCDataset(ds_path) do ds 
     @assert Ronin.calc_ncp(ds) == Vector{Float32}(sample_NCP[:])
-    @assert Ronin.calc_rng(ds) == repeat(ds["range"][:], 1, length(ds["time"]))
+    @assert Ronin.calc_rng(ds) == rng_map
+    @assert Ronin.calc_nrg(ds) == Matrix{Float32}(rng_map ./ alt_map)
 end 
 ################################################################################################################################
 

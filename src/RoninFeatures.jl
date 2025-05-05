@@ -71,6 +71,10 @@ end
 #     iso_array = mapwindow((x) -> _weighted_func(x, weights, sum), missings, window, border=Fill(0.0f0)) 
 # end
 
+
+"""
+Function to calculate the height of a given gate 
+"""
 function airborne_ht(elevation_angle::Float32, antenna_range::Float32, aircraft_height::Float32)
     ##Initial heights are in meters, convert to km 
     aRange_km, acHeight_km = (antenna_range, aircraft_height) ./ 1000
@@ -169,6 +173,9 @@ function calc_pgg(cfrad::NCDataset)
     @inbounds return(map((w,x,y,z) -> prob_groundgate(w,x,y,z), elevs, ranges, heights, azimuths))
 end 
 
+"""
+Function used for calculating grid of radar gate heights. 
+"""
 function calc_aht(cfrad::NCDataset)
 
     num_times = length(cfrad["time"])
@@ -193,7 +200,7 @@ function get_num_tasks(params_file; delimeter = ",")
         else 
             delimited = split(strip(line), delimeter) 
             for token in delimited
-                if !(token == "")
+                if !(strip(token) == "")
                     num_tasks += 1
                 end 
             end 
@@ -204,6 +211,13 @@ function get_num_tasks(params_file; delimeter = ",")
 end
 
 
+"""
+```julia
+parse_directory(dir_path::String) 
+```
+Parses through directory specified by `dir_path` and ensures that files start with 
+the prefix specified by `Ronin.RADAR_FILE_PREFIX`
+"""
 function parse_directory(dir_path::String)
 
     paths = Vector{String}
@@ -220,6 +234,7 @@ function parse_directory(dir_path::String)
     end
     return task_paths 
 end 
+
 
 ###Parses the specified parameter file 
 ###Thinks of the parameter file as a list of tasks to perform on variables in the CFRAD
