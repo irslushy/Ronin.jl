@@ -334,8 +334,8 @@ module Ronin
         for (i, path) in enumerate(paths) 
             dims = (0,0) 
             newIdx = Matrix{}(undef, 0,0)
+            cfrad = Dataset(path) 
             try 
-                cfrad = Dataset(path) 
                 pathstarttime=time() 
                 dims = (cfrad.dim["range"], cfrad.dim["time"])
 
@@ -365,6 +365,7 @@ module Ronin
                     printstyled(Base.stderr, "POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)\n"; color=:red)
                 else 
                     printstyled(Base.stderr, "UNRECOVERABLE ERROR\n"; color=:red)
+                    close(cfrad)
                     throw(e)
     
                 ##@TODO CATCH exception handling for invalid task 
@@ -530,8 +531,8 @@ module Ronin
         for (i, path) in enumerate(paths) 
             dims = (0,0) 
             indexer = Matrix{}(undef, 0,0)
+            cfrad = Dataset(path) 
             try 
-                cfrad = Dataset(path) 
                 pathstarttime=time() 
                 dims = (cfrad.dim["range"], cfrad.dim["time"])
 
@@ -562,9 +563,9 @@ module Ronin
                     printstyled(Base.stderr, "POSSIBLE ERRONEOUS CFRAD DIMENSIONS... SKIPPING $(path)\n"; color=:red)
                 else 
                     printstyled(Base.stderr, "UNRECOVERABLE ERROR\n"; color=:red)
-                    close(fid)
+                    printstyled(Base.stderr, "ERROR: $(e)")
+                    close(cfrad)
                     throw(e)
-    
                 ##@TODO CATCH exception handling for invalid task 
                 end
             end 
